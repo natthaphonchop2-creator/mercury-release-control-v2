@@ -74,7 +74,7 @@ def payload(expected: ReleaseIdentity) -> dict[str, object]:
             "name": "mercury-v0.2.2-release-artifacts-2002-attempt-2",
         },
         "reviewed_sha": expected.reviewed_sha,
-        "schema_version": 2,
+        "schema_version": 3,
         "staging_ref": expected.staging_ref,
         "version": "0.2.2",
     }
@@ -144,6 +144,11 @@ def test_handoff_rejects_stale_unknown_and_duplicate_assets(
     unknown["raw_token"] = "forbidden"
     with pytest.raises(HandoffError, match="^handoff_schema_invalid$"):
         verify_handoff(unknown, expected=expected, now=NOW)
+
+    old_schema = copy.deepcopy(payload)
+    old_schema["schema_version"] = 2
+    with pytest.raises(HandoffError, match="^handoff_schema_invalid$"):
+        verify_handoff(old_schema, expected=expected, now=NOW)
 
     duplicate = copy.deepcopy(payload)
     duplicate["artifacts"].append(copy.deepcopy(duplicate["artifacts"][0]))

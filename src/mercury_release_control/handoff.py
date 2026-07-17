@@ -75,7 +75,7 @@ class VerifiedHandoff(_HandoffModel):
     public_tree_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     release_bundle: ReleaseBundleIdentity
     reviewed_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
-    schema_version: Literal[2]
+    schema_version: Literal[3]
     staging_ref: str = Field(pattern=r"^v0\.2\.2-rc\.[0-9a-f]{12}$")
     version: Literal["0.2.2"]
 

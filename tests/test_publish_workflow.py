@@ -47,7 +47,7 @@ def _payload() -> dict[str, object]:
             "name": "mercury-v0.2.2-release-artifacts-2002-attempt-2",
         },
         "reviewed_sha": REVIEWED_SHA,
-        "schema_version": 2,
+        "schema_version": 3,
         "staging_ref": f"v0.2.2-rc.{REVIEWED_SHA[:12]}",
         "version": "0.2.2",
     }

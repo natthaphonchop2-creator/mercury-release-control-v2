@@ -63,7 +63,7 @@ def _handoff() -> VerifiedHandoff:
                     "name": "mercury-v0.2.2-release-artifacts-2002-attempt-1",
                 },
                 "reviewed_sha": COMMIT,
-                "schema_version": 2,
+                "schema_version": 3,
                 "staging_ref": "v0.2.2-rc." + COMMIT[:12],
                 "version": "0.2.2",
             }
