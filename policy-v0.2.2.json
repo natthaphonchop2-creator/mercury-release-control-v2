@@ -2,7 +2,7 @@
   "schema_version": 2,
   "bootstrap_state": "pending-github-configuration",
   "repository": "natthaphonchop2-creator/mercury-release-control-v2",
-  "repository_id": 0,
+  "repository_id": 1303413748,
   "reviewed_repository": "natthaphonchop2-creator/mercury-tools",
   "reviewed_repository_id": 1290137723,
   "staging_repository": "natthaphonchop2-creator/mercury-tools-staging",
