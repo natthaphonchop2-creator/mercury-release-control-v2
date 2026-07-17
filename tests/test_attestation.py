@@ -92,9 +92,29 @@ def _surface_evidence() -> dict[str, object]:
         "render_build_and_runtime_logs",
         "supabase_knowledge_and_storage",
     )
+    surfaces = []
+    for name in names:
+        surfaces.append(
+            {
+                "blocker_codes": [],
+                "completed_at": NOW.isoformat(),
+                "evidence_hashes": ["f" * 64],
+                "exit_codes": [0],
+                "finding_codes": [],
+                "finding_count": 0,
+                "scanner_versions": (
+                    ["1.0.0", "3.88.32", "8.24.3"]
+                    if name in {"git_all_refs", "github_pull_request_refs"}
+                    else ["1.0.0"]
+                ),
+                "started_at": (NOW - timedelta(minutes=1)).isoformat(),
+                "status": "passed",
+                "surface": name,
+            }
+        )
     return {
         "reviewed_commit_sha": REVIEWED_SHA,
-        "surfaces": [{"finding_count": 0, "status": "passed", "surface": name} for name in names],
+        "surfaces": surfaces,
     }
 
 
@@ -113,6 +133,9 @@ def test_attestation_is_exact_fresh_and_sanitized() -> None:
     assert attestation.version == "0.2.2"
     assert attestation.staging.ref == f"v0.2.2-rc.{REVIEWED_SHA[:12]}"
     assert attestation.public_tree_digest == "d" * 64
+    assert tuple(item.surface for item in attestation.surfaces) == tuple(
+        item["surface"] for item in _surface_evidence()["surfaces"]
+    )
     encoded = attestation.model_dump_json()
     for forbidden in ("client_secret", "access_token", "@", "/Users/"):
         assert forbidden not in encoded
