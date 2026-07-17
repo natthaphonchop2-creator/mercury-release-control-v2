@@ -1,4 +1,4 @@
-name: Control CI
+name: Mercury release-control v2 CI
 
 on:
   pull_request:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  required:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

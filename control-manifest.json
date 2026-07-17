@@ -1,7 +1,7 @@
 {
   "files": {
     ".github/workflows/attest-v0.2.2.yml": "e6d602d28bb4b387dcdbc354cd256cac098f46226765a70fe415b4f9d49498e8",
-    ".github/workflows/ci.yml": "0b8f57f87699960459c6cc3800171659462e8293c6b27dd65010dbbafda81594",
+    ".github/workflows/ci.yml": "d147235488ee49c91d82d7ff96eafca704cb0b778548a0bd31265578efda93d9",
     ".github/workflows/guardian.yml": "82c8c4deacfddad4736d89bbbf8bf197a420c5d7585dfd0ca85675871a669fe4",
     ".github/workflows/publish-v0.2.2.yml": "9e1842ba720916e82fb63d6d3a31719632fe680bd6d8c8902f5f114dde37364d",
     ".gitignore": "a722e716892ecf2ef776d391a96225708f387cd5fb6bfde4b181d1475a4c6dff",
