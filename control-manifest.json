@@ -18,10 +18,10 @@
     "src/mercury_release_control.egg-info/requires.txt": "3af49e6f294463d79c63b4bb5622ba559f781d2a3661699fd53a55ab7075ccdf",
     "src/mercury_release_control.egg-info/top_level.txt": "853b90cc5dc12f71529036a7db8040daf9ce3a9f58095c6e2e8db0e4aa7320c4",
     "src/mercury_release_control/__init__.py": "735f223b0e1fe89a4515496dbec2e3dbc30218c044a9085624e5ada69af22ad9",
-    "src/mercury_release_control/guardian.py": "2c50d8d764782daebeab47d7136bfe8e16aa9e1d4938a4b5497882b4f1c5ba9e",
+    "src/mercury_release_control/guardian.py": "8febc423efa80b5118968c09f5528cdc252ce9e2184b61fa4365d1c779467b53",
     "src/mercury_release_control/public_tree.py": "27b2e3bb0a74348cfc13b270920b68099c9264b751e53c56a54cebaa5431c29d",
     "tests/fixtures/public-tree-v1.json": "f6612b942efa2f3b22bad8538961371ee1415d4cb2997bccde1a116677396806",
-    "tests/test_guardian.py": "cc0cfe030cd74a15cb1695b89cc4d6890453371317e0404633ac5f1d0eb9c582",
+    "tests/test_guardian.py": "cd34135d8c1a65f85b116c9a085d84b08444d776ed34e26532d047f6b458f971",
     "tests/test_public_tree.py": "75b6505a521c417c662bb7e2330345f9c9134c5e8b31f7955f69773cb281fbfb",
     "uv.lock": "bb09e92bf3e8adc0888fba3e0d59c11ffda5297ec29e333c059438d35c187d2b"
   },

@@ -38,6 +38,7 @@ REQUIRED_FILES = frozenset(
 )
 _ACTION_PIN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
+_COMMIT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _SECRET_ASSIGNMENT = re.compile(
     rb"(?im)^\s*(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[:=]\s*[^\s$<{][^\r\n]{7,}$"
 )
@@ -106,10 +107,12 @@ def _read_candidate_archive(archive_bytes: bytes) -> dict[str, bytes]:
     prefix: str | None = None
     try:
         with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:*") as archive:
+            global_comment = _git_comment(archive.pax_headers)
             for member in archive.getmembers():
                 if member.isdir():
                     continue
-                if not member.isfile() or member.pax_headers:
+                expected_headers = {"comment": global_comment} if global_comment is not None else {}
+                if not member.isfile() or member.pax_headers != expected_headers:
                     raise GuardianError("candidate_archive_invalid")
                 parts = member.name.split("/", 1)
                 if len(parts) != 2 or not parts[0] or not parts[1]:
@@ -136,6 +139,19 @@ def _read_candidate_archive(archive_bytes: bytes) -> dict[str, bytes]:
     except (OSError, tarfile.TarError, UnicodeError, ValueError) as exc:
         raise GuardianError("candidate_archive_invalid") from exc
     return files
+
+
+def _git_comment(headers: dict[str, str]) -> str | None:
+    if not headers:
+        return None
+    comment = headers.get("comment")
+    if (
+        set(headers) != {"comment"}
+        or not isinstance(comment, str)
+        or _COMMIT.fullmatch(comment) is None
+    ):
+        raise GuardianError("candidate_archive_invalid")
+    return comment
 
 
 def _canonical_path(value: str) -> str:

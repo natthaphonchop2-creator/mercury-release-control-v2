@@ -79,9 +79,18 @@ def _candidate_files(marker: Path | None = None) -> dict[str, bytes]:
     return files
 
 
-def _archive(files: dict[str, bytes]) -> bytes:
+def _archive(
+    files: dict[str, bytes],
+    *,
+    global_headers: dict[str, str] | None = None,
+) -> bytes:
     output = io.BytesIO()
-    with tarfile.open(fileobj=output, mode="w:gz") as archive:
+    with tarfile.open(
+        fileobj=output,
+        mode="w:gz",
+        format=tarfile.PAX_FORMAT,
+        pax_headers=global_headers,
+    ) as archive:
         for path, content in sorted(files.items()):
             member = tarfile.TarInfo(f"candidate-sha/{path}")
             member.mode = 0o644
@@ -98,6 +107,13 @@ def test_guardian_reads_candidate_as_data_without_execution(tmp_path: Path) -> N
     assert receipt.status == "passed"
     assert receipt.file_count == 11
     assert not marker.exists()
+
+
+def test_guardian_accepts_git_commit_global_pax_comment() -> None:
+    receipt = verify_candidate_archive(
+        _archive(_candidate_files(), global_headers={"comment": "a" * 40})
+    )
+    assert receipt.status == "passed"
 
 
 def test_guardian_rejects_manifest_hash_drift() -> None:
