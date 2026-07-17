@@ -315,7 +315,7 @@ def _manifest_for_root(root: Path) -> dict[str, object]:
                 "__pycache__",
                 "release-evidence",
             }
-        )
+        ) or any(part.endswith(".egg-info") for part in parts)
         if path.is_file() and not path.is_symlink() and not ignored:
             if relative == MANIFEST_PATH:
                 continue
