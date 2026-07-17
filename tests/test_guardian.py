@@ -165,6 +165,39 @@ def test_guardian_rejects_forbidden_secret_path() -> None:
         verify_candidate_archive(_archive(files))
 
 
+def test_guardian_rejects_literal_secret_assignment() -> None:
+    files = _candidate_files()
+    files["src/mercury_release_control/guardian.py"] += (
+        b'\nclient_secret = "hardcoded-fixture-secret"\n'
+    )
+    files["control-manifest.json"] = json.dumps(
+        build_manifest_payload(
+            {key: value for key, value in files.items() if key != "control-manifest.json"}
+        ),
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+
+    with pytest.raises(GuardianError, match="^candidate_secret_detected$"):
+        verify_candidate_archive(_archive(files))
+
+
+def test_guardian_allows_secret_variable_reads() -> None:
+    files = _candidate_files()
+    files["src/mercury_release_control/guardian.py"] += (
+        b'\nclient_secret = environment["CLIENT_SECRET"]\n'
+    )
+    files["control-manifest.json"] = json.dumps(
+        build_manifest_payload(
+            {key: value for key, value in files.items() if key != "control-manifest.json"}
+        ),
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+
+    assert verify_candidate_archive(_archive(files)).status == "passed"
+
+
 def test_guardian_rejects_duplicate_policy_keys() -> None:
     files = _candidate_files()
     files["policy-v0.2.2.json"] = b'{"schema_version":2,"schema_version":2}'

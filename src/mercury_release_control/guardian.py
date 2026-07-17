@@ -40,7 +40,8 @@ _ACTION_PIN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _SECRET_ASSIGNMENT = re.compile(
-    rb"(?im)^\s*(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[:=]\s*[^\s$<{][^\r\n]{7,}$"
+    rb"(?im)^\s*(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[:=]\s*"
+    rb"(?:[\"'][^\"'$<{][^\"'\r\n]{7,}[\"']|[A-Za-z0-9+/=_-]{8,})\s*[,;]?\s*$"
 )
 _ALLOWED_PERMISSIONS = {
     "ci.yml": {"contents": "read"},
