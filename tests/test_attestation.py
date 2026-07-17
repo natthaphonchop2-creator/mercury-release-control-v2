@@ -131,6 +131,9 @@ def test_attestation_is_exact_fresh_and_sanitized() -> None:
     )
 
     assert attestation.version == "0.2.2"
+    assert attestation.staging.repository == (
+        "natthaphonchop2-creator/mercury-tools-staging"
+    )
     assert attestation.staging.ref == f"v0.2.2-rc.{REVIEWED_SHA[:12]}"
     assert attestation.public_tree_digest == "d" * 64
     assert tuple(item.surface for item in attestation.surfaces) == tuple(

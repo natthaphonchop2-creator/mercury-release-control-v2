@@ -26,6 +26,7 @@ class _AttestationModel(BaseModel):
 class StagingReceipt(_AttestationModel):
     commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
     ref: str = Field(pattern=r"^v0\.2\.2-rc\.[0-9a-f]{12}$")
+    repository: Literal["natthaphonchop2-creator/mercury-tools-staging"]
     tag_object_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
 
 
@@ -94,6 +95,7 @@ def assemble_attestation(
         "staging": StagingReceipt(
             commit_sha=staging.staging_commit_sha,
             ref=staging.tag,
+            repository="natthaphonchop2-creator/mercury-tools-staging",
             tag_object_sha=staging.tag_object_sha,
         ),
         "surface_count": len(surfaces),
