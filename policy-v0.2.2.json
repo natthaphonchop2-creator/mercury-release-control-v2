@@ -11,7 +11,7 @@
   "inspector": {
     "interface_version": 2,
     "path": "src/mercury_release_control/surface_inspector.py",
-    "sha256": "32e40cf58b68a291a5b3be573f466e1d7d7ae4d8e0fb82b318394fcc8d948032"
+    "sha256": "c89580f6143b2972b7449653602f248b90ed013dfbd3a4fa97486f9ad93521e6"
   },
   "immutable_releases_required": true,
   "release_tag_ruleset": {
@@ -56,6 +56,7 @@
     "MERCURY_MARKETPLACE_SNAPSHOT_URL",
     "MERCURY_PUBLIC_MCP_URL",
     "RENDER_API_URL",
+    "RENDER_OWNER_ID",
     "RENDER_SERVICE_ID",
     "STAGING_REPOSITORY",
     "SUPABASE_URL",

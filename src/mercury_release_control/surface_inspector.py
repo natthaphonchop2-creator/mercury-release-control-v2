@@ -155,6 +155,7 @@ _PROJECT_RE = re.compile(r"^[a-z0-9]{20}$")
 _STAGING_REF_RE = re.compile(r"^v0\.2\.2-rc\.[0-9a-f]{12}$")
 _ENV_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,127}$")
 _SERVICE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_RENDER_OWNER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _ACTION_ID_RE = re.compile(r"^act_[0-9a-f]{24}$")
 _VERSION_ID_RE = re.compile(r"^av_[0-9a-f]{64}$")
 _POOLER_RE = re.compile(r"^(?:aws-[0-9]+-)?[a-z0-9-]+\.pooler\.supabase\.com$")
@@ -217,6 +218,7 @@ _REQUIRED_ENVIRONMENT = (
     "MERCURY_TARGET_REPOSITORY_READ_TOKEN",
     "RENDER_API_TOKEN",
     "RENDER_API_URL",
+    "RENDER_OWNER_ID",
     "RENDER_SERVICE_ID",
     "STAGING_REPOSITORY",
     "SUPABASE_DB_URL",
@@ -721,6 +723,8 @@ def validate_environment(policy: Mapping[str, object], environment: Mapping[str,
         raise InspectionError("render_api_url_invalid")
     if _SERVICE_ID_RE.fullmatch(environment["RENDER_SERVICE_ID"]) is None:
         raise InspectionError("render_service_id_invalid")
+    if _RENDER_OWNER_ID_RE.fullmatch(environment["RENDER_OWNER_ID"]) is None:
+        raise InspectionError("render_owner_id_invalid")
     for name in ("INSPECTOR_GIT", "INSPECTOR_GITLEAKS", "INSPECTOR_TRUFFLEHOG"):
         path = Path(environment[name])
         if not path.is_absolute():
@@ -2311,6 +2315,25 @@ def _render_status_endpoint(
     return endpoint
 
 
+def _render_log_url(
+    render_base: str,
+    *,
+    service_id: str,
+    owner_id: str,
+    log_type: str,
+) -> str:
+    if (
+        _SERVICE_ID_RE.fullmatch(service_id) is None
+        or _RENDER_OWNER_ID_RE.fullmatch(owner_id) is None
+        or log_type not in {"build", "runtime"}
+    ):
+        raise InspectionError("render_log_query_invalid")
+    query = urllib.parse.urlencode(
+        {"resource": service_id, "ownerId": owner_id, "type": log_type}
+    )
+    return f"{render_base.rstrip('/')}/logs?{query}"
+
+
 def _inspect_render_and_public_mcp(
     *,
     environment: Mapping[str, str],
@@ -2500,11 +2523,13 @@ def _inspect_render_and_public_mcp(
         samples.append(sample_response)
     log_payloads = []
     for log_type in ("build", "runtime"):
-        query = urllib.parse.urlencode(
-            {"resource": environment["RENDER_SERVICE_ID"], "type": log_type}
-        )
         response = request_bytes(
-            f"{render_base}/logs?{query}",
+            _render_log_url(
+                render_base,
+                service_id=environment["RENDER_SERVICE_ID"],
+                owner_id=environment["RENDER_OWNER_ID"],
+                log_type=log_type,
+            ),
             headers=render_headers,
             code="render_log_query_failed",
             budget=budget,

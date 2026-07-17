@@ -218,6 +218,7 @@ def _validate_policy(content: bytes) -> None:
     release = policy.get("release")
     staging = policy.get("staging")
     expectations = policy.get("provider_expectations")
+    required_variables = policy.get("required_environment_variables")
     if (
         policy.get("schema_version") != 2
         or not isinstance(release, Mapping)
@@ -242,6 +243,18 @@ def _validate_policy(content: bytes) -> None:
             "supabase_function_count": 10,
             "supabase_table_count": 17,
         }
+        or required_variables
+        != [
+            "FLOWACCOUNT_SANDBOX_BASE_URL",
+            "MERCURY_MARKETPLACE_SNAPSHOT_URL",
+            "MERCURY_PUBLIC_MCP_URL",
+            "RENDER_API_URL",
+            "RENDER_OWNER_ID",
+            "RENDER_SERVICE_ID",
+            "STAGING_REPOSITORY",
+            "SUPABASE_URL",
+            "TARGET_REPOSITORY",
+        ]
         or not isinstance(policy.get("supabase"), Mapping)
     ):
         raise GuardianError("candidate_policy_invalid")

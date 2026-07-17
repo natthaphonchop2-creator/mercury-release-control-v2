@@ -211,3 +211,20 @@ def test_guardian_rejects_duplicate_policy_keys() -> None:
 
     with pytest.raises(GuardianError, match="^candidate_policy_invalid$"):
         verify_candidate_archive(_archive(files))
+
+
+def test_guardian_rejects_policy_without_required_render_owner_variable() -> None:
+    files = _candidate_files()
+    policy = json.loads(files["policy-v0.2.2.json"])
+    policy["required_environment_variables"].remove("RENDER_OWNER_ID")
+    files["policy-v0.2.2.json"] = json.dumps(policy, separators=(",", ":"), sort_keys=True).encode()
+    files["control-manifest.json"] = json.dumps(
+        build_manifest_payload(
+            {key: value for key, value in files.items() if key != "control-manifest.json"}
+        ),
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+
+    with pytest.raises(GuardianError, match="^candidate_policy_invalid$"):
+        verify_candidate_archive(_archive(files))

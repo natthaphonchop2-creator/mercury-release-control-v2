@@ -116,6 +116,7 @@ jobs:
           MERCURY_TARGET_REPOSITORY_READ_TOKEN: ${{ secrets.MERCURY_TARGET_REPOSITORY_READ_TOKEN }}
           RENDER_API_TOKEN: ${{ secrets.RENDER_API_TOKEN }}
           RENDER_API_URL: ${{ vars.RENDER_API_URL }}
+          RENDER_OWNER_ID: ${{ vars.RENDER_OWNER_ID }}
           RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
           REVIEWED_SHA: ${{ inputs.reviewed_commit_sha }}
           STAGING_REPOSITORY: ${{ vars.STAGING_REPOSITORY }}

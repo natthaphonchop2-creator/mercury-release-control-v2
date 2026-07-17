@@ -47,6 +47,16 @@ def test_attestation_workflow_never_executes_candidate_files() -> None:
     assert 'git -C "$MIRROR" archive' in text
 
 
+def test_attestation_workflow_supplies_render_owner_id_to_surface_inspector() -> None:
+    workflow = yaml.load(WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    steps = workflow["jobs"]["attest"]["steps"]
+    inspect_step = next(
+        step for step in steps if step["name"] == "Inspect every hosted and repository surface"
+    )
+
+    assert inspect_step["env"]["RENDER_OWNER_ID"] == "${{ vars.RENDER_OWNER_ID }}"
+
+
 def test_attestation_dispatch_does_not_relay_caller_supplied_staging_identity() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     dispatch = text.split(

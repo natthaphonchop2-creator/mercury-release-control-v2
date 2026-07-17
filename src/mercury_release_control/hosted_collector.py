@@ -53,6 +53,8 @@ _SECRET_VALUE = re.compile(
     rb"eyJ[A-Za-z0-9_-]{16,}|-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----)"
 )
 _MAX_RESPONSE = 32 * 1024 * 1024
+_RENDER_OWNER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_RENDER_SERVICE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +82,7 @@ class HostedProviderCollector:
             "MERCURY_PUBLIC_MCP_URL",
             "RENDER_API_TOKEN",
             "RENDER_API_URL",
+            "RENDER_OWNER_ID",
             "RENDER_SERVICE_ID",
             "SUPABASE_DB_URL",
         }
@@ -105,8 +108,11 @@ class HostedProviderCollector:
         if not render_url.endswith("/v1"):
             render_url += "/v1"
         service_id = environment["RENDER_SERVICE_ID"]
-        if re.fullmatch(r"[A-Za-z0-9_-]{1,128}", service_id) is None:
+        owner_id = environment["RENDER_OWNER_ID"]
+        if _RENDER_SERVICE_ID_RE.fullmatch(service_id) is None:
             raise InspectionError("render_service_invalid")
+        if _RENDER_OWNER_ID_RE.fullmatch(owner_id) is None:
+            raise InspectionError("render_owner_invalid")
         render_headers = {"Authorization": f"Bearer {environment['RENDER_API_TOKEN']}"}
         service = _json_request(f"{render_url}/services/{service_id}", headers=render_headers)
         details = service.get("serviceDetails")
@@ -161,8 +167,15 @@ class HostedProviderCollector:
             connector: mcp.citation_count(connector) for connector in ("flowaccount", "peak")
         }
         for log_type in ("build", "runtime"):
-            query = urllib.parse.urlencode({"resource": service_id, "type": log_type})
-            raw = _request(f"{render_url}/logs?{query}", headers=render_headers).body
+            raw = _request(
+                _render_log_url(
+                    render_url,
+                    service_id=service_id,
+                    owner_id=owner_id,
+                    log_type=log_type,
+                ),
+                headers=render_headers,
+            ).body
             _assert_no_secret(raw, environment.values())
         return (
             {
@@ -260,6 +273,25 @@ class HostedProviderCollector:
         if not isinstance(payload, dict) or payload.get("error"):
             raise InspectionError("flowaccount_sandbox_read_failed")
         return {"environment": "sandbox", "read_only": True, "status": company.status}
+
+
+def _render_log_url(
+    render_base: str,
+    *,
+    service_id: str,
+    owner_id: str,
+    log_type: str,
+) -> str:
+    if (
+        _RENDER_SERVICE_ID_RE.fullmatch(service_id) is None
+        or _RENDER_OWNER_ID_RE.fullmatch(owner_id) is None
+        or log_type not in {"build", "runtime"}
+    ):
+        raise InspectionError("render_log_query_invalid")
+    query = urllib.parse.urlencode(
+        {"resource": service_id, "ownerId": owner_id, "type": log_type}
+    )
+    return f"{render_base.rstrip('/')}/logs?{query}"
 
 
 class _McpProbe:

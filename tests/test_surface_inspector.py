@@ -7,7 +7,9 @@ import pytest
 
 from mercury_release_control.surface_inspector import (
     InspectionError,
+    _render_log_url,
     _render_status_endpoint,
+    validate_environment,
     validate_policy,
 )
 
@@ -57,3 +59,62 @@ def test_surface_inspector_binds_render_to_v022_and_reviewed_commit() -> None:
             base_url="https://mercury.example",
             reviewed_sha="a" * 40,
         )
+
+
+def _valid_environment() -> dict[str, str]:
+    return {
+        "FLOWACCOUNT_SANDBOX_BASE_URL": "https://openapi.flowaccount.com/test",
+        "FLOWACCOUNT_SANDBOX_CLIENT_ID": "client-id",
+        "FLOWACCOUNT_SANDBOX_CLIENT_SECRET": "client-secret",
+        "INSPECTOR_GIT": "/usr/bin/git",
+        "INSPECTOR_GITLEAKS": "/usr/local/bin/gitleaks",
+        "INSPECTOR_TRUFFLEHOG": "/usr/local/bin/trufflehog",
+        "MERCURY_MARKETPLACE_SNAPSHOT_URL": "https://example.invalid/marketplace.json",
+        "MERCURY_PUBLIC_MCP_TOKEN": "public-token",
+        "MERCURY_PUBLIC_MCP_URL": "https://mercury.example",
+        "MERCURY_STAGING_REPOSITORY_TOKEN": "staging-token",
+        "MERCURY_TARGET_REPOSITORY_READ_TOKEN": "read-token",
+        "RENDER_API_TOKEN": "render-token",
+        "RENDER_API_URL": "https://api.render.com",
+        "RENDER_OWNER_ID": "tea_01HZX6R9HQSPX9K4GTDR",
+        "RENDER_SERVICE_ID": "srv-d978tk37uimc73ej52mg",
+        "STAGING_REPOSITORY": "natthaphonchop2-creator/mercury-tools-staging",
+        "SUPABASE_DB_URL": "postgresql://user:password@db.example:5432/postgres",
+        "SUPABASE_URL": "https://vbnlkqvauqwnjbxngkas.supabase.co",
+        "TARGET_REPOSITORY": "natthaphonchop2-creator/mercury-tools",
+    }
+
+
+def test_surface_inspector_requires_safe_render_owner_id() -> None:
+    policy = _configured_policy()
+    environment = _valid_environment()
+
+    validate_environment(policy, environment)
+
+    environment.pop("RENDER_OWNER_ID")
+    with pytest.raises(InspectionError, match="^environment_value_invalid$"):
+        validate_environment(policy, environment)
+
+    environment["RENDER_OWNER_ID"] = "tea_01HZX6R9HQSPX9K4GTDR&forged=true"
+    with pytest.raises(InspectionError, match="^render_owner_id_invalid$"):
+        validate_environment(policy, environment)
+
+
+@pytest.mark.parametrize("log_type", ("build", "runtime"))
+def test_surface_inspector_render_log_urls_bind_owner_id(log_type: str) -> None:
+    from urllib.parse import parse_qs, urlsplit
+
+    url = _render_log_url(
+        "https://api.render.com/v1",
+        service_id="srv-d978tk37uimc73ej52mg",
+        owner_id="tea_01HZX6R9HQSPX9K4GTDR",
+        log_type=log_type,
+    )
+
+    parsed = urlsplit(url)
+    assert parsed.path == "/v1/logs"
+    assert parse_qs(parsed.query, strict_parsing=True) == {
+        "ownerId": ["tea_01HZX6R9HQSPX9K4GTDR"],
+        "resource": ["srv-d978tk37uimc73ej52mg"],
+        "type": [log_type],
+    }
