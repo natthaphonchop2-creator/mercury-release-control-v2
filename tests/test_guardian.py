@@ -14,6 +14,7 @@ from mercury_release_control.guardian import (
 )
 
 CHECKOUT_PIN = "34e114876b0b11c390a56381ad16ebd13914f8d5"
+POLICY = Path(__file__).resolve().parents[1] / "policy-v0.2.2.json"
 
 
 def _ci_workflow() -> bytes:
@@ -58,14 +59,7 @@ def _candidate_files(marker: Path | None = None) -> dict[str, bytes]:
         ".gitignore": b".venv/\n",
         "LICENSE": b"MIT\n",
         "README.md": b"Mercury release control\n",
-        "policy-v0.2.2.json": json.dumps(
-            {
-                "release": {"tag": "v0.2.2", "version": "0.2.2"},
-                "schema_version": 1,
-            },
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode(),
+        "policy-v0.2.2.json": POLICY.read_bytes(),
         "pyproject.toml": b"[project]\nname='mercury-release-control'\nversion='0.2.2'\n",
         "src/mercury_release_control/__init__.py": b"__version__ = '0.2.2'\n",
         "src/mercury_release_control/guardian.py": payload,
@@ -173,7 +167,7 @@ def test_guardian_rejects_forbidden_secret_path() -> None:
 
 def test_guardian_rejects_duplicate_policy_keys() -> None:
     files = _candidate_files()
-    files["policy-v0.2.2.json"] = b'{"schema_version":1,"schema_version":1}'
+    files["policy-v0.2.2.json"] = b'{"schema_version":2,"schema_version":2}'
     files["control-manifest.json"] = json.dumps(
         build_manifest_payload(
             {key: value for key, value in files.items() if key != "control-manifest.json"}

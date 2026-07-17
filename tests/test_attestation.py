@@ -81,6 +81,23 @@ def _staging() -> ExistingStaging:
     )
 
 
+def _surface_evidence() -> dict[str, object]:
+    names = (
+        "git_all_refs",
+        "github_pull_request_refs",
+        "github_releases_and_assets",
+        "github_actions_logs_artifacts_caches",
+        "github_packages_pages_wiki",
+        "marketplace_snapshot",
+        "render_build_and_runtime_logs",
+        "supabase_knowledge_and_storage",
+    )
+    return {
+        "reviewed_commit_sha": REVIEWED_SHA,
+        "surfaces": [{"finding_count": 0, "status": "passed", "surface": name} for name in names],
+    }
+
+
 def test_attestation_is_exact_fresh_and_sanitized() -> None:
     attestation = assemble_attestation(
         evidence=_provider_evidence(),
@@ -90,6 +107,7 @@ def test_attestation_is_exact_fresh_and_sanitized() -> None:
         run_id=123,
         run_attempt=1,
         now=NOW,
+        surface_evidence=_surface_evidence(),
     )
 
     assert attestation.version == "0.2.2"
@@ -110,6 +128,7 @@ def test_attestation_schema_rejects_unknown_fields() -> None:
         run_id=123,
         run_attempt=1,
         now=NOW,
+        surface_evidence=_surface_evidence(),
     )
     payload = attestation.model_dump()
     payload["raw_provider_payload"] = {"access_token": "forbidden"}
@@ -127,6 +146,7 @@ def test_attestation_expires_and_rejects_identity_mismatch() -> None:
         run_id=123,
         run_attempt=1,
         now=NOW,
+        surface_evidence=_surface_evidence(),
     )
 
     with pytest.raises(AttestationError, match="^attestation_expired$"):

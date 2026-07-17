@@ -1,0 +1,205 @@
+name: Mercury v0.2.2 trusted hosted attestation
+
+on:
+  workflow_dispatch:
+    inputs:
+      reviewed_commit_sha:
+        description: Exact reviewed mercury-tools main commit
+        required: true
+        type: string
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  attest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: production-release
+    steps:
+      - name: Checkout exact trusted control implementation
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install uv 0.11.9
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081
+        with:
+          version: 0.11.9
+      - name: Bind trusted implementation and install locked dependencies
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+          uv sync --frozen
+      - name: Verify GitHub identities and protected release environment
+        env:
+          RELEASE_CONTROL_PREFLIGHT_TOKEN: ${{ secrets.RELEASE_CONTROL_PREFLIGHT_TOKEN }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$RUNNER_TEMP/mercury-release"
+          uv run python -m mercury_release_control.workflow preflight \
+            --policy policy-v0.2.2.json \
+            --output "$RUNNER_TEMP/mercury-release/preflight.json"
+      - name: Download reviewed inputs as data and bind origin main
+        env:
+          GH_TOKEN: ${{ secrets.MERCURY_TARGET_REPOSITORY_READ_TOKEN }}
+          REVIEWED_SHA: ${{ inputs.reviewed_commit_sha }}
+          TARGET_REPOSITORY: ${{ vars.TARGET_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$TARGET_REPOSITORY" = "$(jq -er '.reviewed_repository' policy-v0.2.2.json)"
+          INPUT_ROOT="$RUNNER_TEMP/mercury-release/inputs"
+          MIRROR="$RUNNER_TEMP/mercury-release/target.git"
+          install -d -m 700 "$INPUT_ROOT"
+          gh repo clone "$TARGET_REPOSITORY" "$MIRROR" -- --mirror
+          git -C "$MIRROR" fetch --force origin \
+            '+refs/heads/*:refs/heads/*' \
+            '+refs/tags/*:refs/tags/*' \
+            '+refs/pull/*/head:refs/pull/*/head'
+          test "$(git -C "$MIRROR" rev-parse refs/heads/main)" = "$REVIEWED_SHA"
+          git -C "$MIRROR" archive --format=tar "$REVIEWED_SHA" \
+            >"$INPUT_ROOT/reviewed.tar"
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$TARGET_REPOSITORY/contents/docs/release/public-surface-manifest.json?ref=$REVIEWED_SHA" \
+            >"$INPUT_ROOT/public-surface-manifest.json"
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$TARGET_REPOSITORY/contents/docs/release/secret-scan-allowlist.json?ref=$REVIEWED_SHA" \
+            >"$INPUT_ROOT/secret-scan-allowlist.json"
+      - name: Install checksum-verified scanners
+        env:
+          GITLEAKS_SHA256: 9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c
+          GITLEAKS_URL: https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz
+          TRUFFLEHOG_SHA256: cddd1f602da61a130580883f4dd96b3d206efaf55a22068321cc11237fbc88cd
+          TRUFFLEHOG_URL: https://github.com/trufflesecurity/trufflehog/releases/download/v3.88.32/trufflehog_3.88.32_linux_amd64.tar.gz
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "x86_64"
+          ROOT="$RUNNER_TEMP/mercury-release/scanners"
+          install -d -m 700 "$ROOT/bin"
+          curl --fail --location --silent --show-error "$GITLEAKS_URL" --output "$ROOT/gitleaks.tgz"
+          curl --fail --location --silent --show-error "$TRUFFLEHOG_URL" --output "$ROOT/trufflehog.tgz"
+          printf '%s  %s\n' "$GITLEAKS_SHA256" "$ROOT/gitleaks.tgz" | sha256sum --check
+          printf '%s  %s\n' "$TRUFFLEHOG_SHA256" "$ROOT/trufflehog.tgz" | sha256sum --check
+          tar --extract --gzip --file "$ROOT/gitleaks.tgz" --directory "$ROOT/bin" gitleaks
+          tar --extract --gzip --file "$ROOT/trufflehog.tgz" --directory "$ROOT/bin" trufflehog
+          chmod 0555 "$ROOT/bin/gitleaks" "$ROOT/bin/trufflehog"
+          printf '%s\n' "INSPECTOR_GIT=/usr/bin/git" >>"$GITHUB_ENV"
+          printf '%s\n' "INSPECTOR_GITLEAKS=$ROOT/bin/gitleaks" >>"$GITHUB_ENV"
+          printf '%s\n' "INSPECTOR_TRUFFLEHOG=$ROOT/bin/trufflehog" >>"$GITHUB_ENV"
+      - name: Build and publish exact history-free staging
+        env:
+          MERCURY_STAGING_REPOSITORY_TOKEN: ${{ secrets.MERCURY_STAGING_REPOSITORY_TOKEN }}
+          REVIEWED_SHA: ${{ inputs.reviewed_commit_sha }}
+        run: |
+          set -euo pipefail
+          uv run python -m mercury_release_control.workflow stage \
+            --archive "$RUNNER_TEMP/mercury-release/inputs/reviewed.tar" \
+            --identity-output "$RUNNER_TEMP/mercury-release/staging.json" \
+            --output "$RUNNER_TEMP/mercury-release/staging-repository" \
+            --policy policy-v0.2.2.json \
+            --reviewed-sha "$REVIEWED_SHA"
+      - name: Inspect every hosted and repository surface
+        env:
+          FLOWACCOUNT_SANDBOX_BASE_URL: ${{ vars.FLOWACCOUNT_SANDBOX_BASE_URL }}
+          FLOWACCOUNT_SANDBOX_CLIENT_ID: ${{ secrets.FLOWACCOUNT_SANDBOX_CLIENT_ID }}
+          FLOWACCOUNT_SANDBOX_CLIENT_SECRET: ${{ secrets.FLOWACCOUNT_SANDBOX_CLIENT_SECRET }}
+          MERCURY_MARKETPLACE_SNAPSHOT_URL: ${{ vars.MERCURY_MARKETPLACE_SNAPSHOT_URL }}
+          MERCURY_PUBLIC_MCP_TOKEN: ${{ secrets.MERCURY_PUBLIC_MCP_TOKEN }}
+          MERCURY_PUBLIC_MCP_URL: ${{ vars.MERCURY_PUBLIC_MCP_URL }}
+          MERCURY_STAGING_REPOSITORY_TOKEN: ${{ secrets.MERCURY_STAGING_REPOSITORY_TOKEN }}
+          MERCURY_TARGET_REPOSITORY_READ_TOKEN: ${{ secrets.MERCURY_TARGET_REPOSITORY_READ_TOKEN }}
+          RENDER_API_TOKEN: ${{ secrets.RENDER_API_TOKEN }}
+          RENDER_API_URL: ${{ vars.RENDER_API_URL }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+          REVIEWED_SHA: ${{ inputs.reviewed_commit_sha }}
+          STAGING_REPOSITORY: ${{ vars.STAGING_REPOSITORY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          TARGET_REPOSITORY: ${{ vars.TARGET_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          STAGING_REF="$(jq -er '.tag' "$RUNNER_TEMP/mercury-release/staging.json")"
+          uv run python -m mercury_release_control.surface_inspector \
+            --interface-version 2 \
+            --policy policy-v0.2.2.json \
+            --reviewed-sha "$REVIEWED_SHA" \
+            --staging-ref "$STAGING_REF" \
+            --manifest "$RUNNER_TEMP/mercury-release/inputs/public-surface-manifest.json" \
+            --allowlist "$RUNNER_TEMP/mercury-release/inputs/secret-scan-allowlist.json" \
+            --output "$RUNNER_TEMP/mercury-release/surface-evidence.json"
+          uv run python -m mercury_release_control.workflow providers \
+            --identity "$RUNNER_TEMP/mercury-release/staging.json" \
+            --output "$RUNNER_TEMP/mercury-release/provider-evidence.json" \
+            --policy policy-v0.2.2.json \
+            --reviewed-sha "$REVIEWED_SHA"
+      - name: Assemble exact sanitized TrustedAttestationV2
+        env:
+          REVIEWED_SHA: ${{ inputs.reviewed_commit_sha }}
+        run: |
+          set -euo pipefail
+          OUTPUT="$RUNNER_TEMP/mercury-release/trusted-hosted-attestation.json"
+          uv run python -m mercury_release_control.workflow attest \
+            --control-commit "$GITHUB_SHA" \
+            --identity "$RUNNER_TEMP/mercury-release/staging.json" \
+            --output "$OUTPUT" \
+            --preflight "$RUNNER_TEMP/mercury-release/preflight.json" \
+            --providers "$RUNNER_TEMP/mercury-release/provider-evidence.json" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --run-id "$GITHUB_RUN_ID" \
+            --surface-evidence "$RUNNER_TEMP/mercury-release/surface-evidence.json"
+          test "$(jq -er '.reviewed_sha' "$OUTPUT")" = "$REVIEWED_SHA"
+      - name: Retain the only bounded release artifact
+        id: retain
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mercury-v0.2.2-attestation-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mercury-release/trusted-hosted-attestation.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Dispatch secretless Mercury artifact verification
+        env:
+          ARTIFACT_DIGEST: ${{ steps.retain.outputs.artifact-digest }}
+          ARTIFACT_ID: ${{ steps.retain.outputs.artifact-id }}
+          GH_TOKEN: ${{ secrets.MERCURY_TARGET_WORKFLOW_DISPATCH_TOKEN }}
+          REVIEWED_SHA: ${{ inputs.reviewed_commit_sha }}
+          TARGET_REPOSITORY: ${{ vars.TARGET_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          ATTESTATION="$RUNNER_TEMP/mercury-release/trusted-hosted-attestation.json"
+          ATTESTATION_B64="$(base64 --wrap=0 "$ATTESTATION")"
+          PAYLOAD_SHA256="$(sha256sum "$ATTESTATION" | awk '{print $1}')"
+          STAGING_REF="$(jq -er '.staging.ref' "$ATTESTATION")"
+          PUBLIC_TREE_DIGEST="$(jq -er '.public_tree_digest' "$ATTESTATION")"
+          test "${#ATTESTATION_B64}" -le 60000
+          jq -n \
+            --arg ref main \
+            --arg reviewed_main_sha "$REVIEWED_SHA" \
+            --arg staging_ref "$STAGING_REF" \
+            --arg public_tree_digest "$PUBLIC_TREE_DIGEST" \
+            --arg control_commit "$GITHUB_SHA" \
+            --arg control_run_id "$GITHUB_RUN_ID" \
+            --arg control_run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg control_artifact_id "$ARTIFACT_ID" \
+            --arg control_artifact_digest "$ARTIFACT_DIGEST" \
+            --arg control_payload_sha256 "$PAYLOAD_SHA256" \
+            --arg control_repository_id "$GITHUB_REPOSITORY_ID" \
+            --arg control_attestation_b64 "$ATTESTATION_B64" \
+            '{ref: $ref, inputs: {reviewed_main_sha: $reviewed_main_sha,
+              staging_ref: $staging_ref, public_tree_digest: $public_tree_digest,
+              release_control_commit: $control_commit,
+              release_control_run_id: $control_run_id,
+              release_control_run_attempt: $control_run_attempt,
+              release_control_attestation_artifact_id: $control_artifact_id,
+              release_control_attestation_artifact_digest: $control_artifact_digest,
+              release_control_attestation_payload_sha256: $control_payload_sha256,
+              release_control_repository_id: $control_repository_id,
+              release_control_attestation_b64: $control_attestation_b64}}' \
+            | gh api --method POST \
+              "repos/$TARGET_REPOSITORY/actions/workflows/release-v0.2.2.yml/dispatches" \
+              --input - >/dev/null

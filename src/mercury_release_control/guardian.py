@@ -215,11 +215,33 @@ def _strict_json(content: bytes, code: str) -> Mapping[str, object]:
 def _validate_policy(content: bytes) -> None:
     policy = _strict_json(content, "candidate_policy_invalid")
     release = policy.get("release")
+    staging = policy.get("staging")
+    expectations = policy.get("provider_expectations")
     if (
-        set(policy) != {"release", "schema_version"}
-        or policy.get("schema_version") != 1
+        policy.get("schema_version") != 2
         or not isinstance(release, Mapping)
         or dict(release) != {"tag": "v0.2.2", "version": "0.2.2"}
+        or policy.get("repository") != "natthaphonchop2-creator/mercury-release-control-v2"
+        or policy.get("reviewed_repository") != "natthaphonchop2-creator/mercury-tools"
+        or policy.get("staging_repository") != "natthaphonchop2-creator/mercury-tools-staging"
+        or policy.get("branch") != "main"
+        or policy.get("environment") != "production-release"
+        or not isinstance(staging, Mapping)
+        or dict(staging)
+        != {
+            "repository": "natthaphonchop2-creator/mercury-tools-staging",
+            "tag_prefix": "v0.2.2-rc.",
+        }
+        or not isinstance(expectations, Mapping)
+        or dict(expectations)
+        != {
+            "catalog_action_count": 254,
+            "flowaccount_environment": "sandbox",
+            "hosted_tool_count": 20,
+            "supabase_function_count": 10,
+            "supabase_table_count": 17,
+        }
+        or not isinstance(policy.get("supabase"), Mapping)
     ):
         raise GuardianError("candidate_policy_invalid")
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -45,6 +46,8 @@ class TrustedAttestationV2(_AttestationModel):
     reviewed_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
     schema_version: Literal[2]
     staging: StagingReceipt
+    surface_evidence_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    surface_count: Literal[8]
     version: Literal["0.2.2"]
     workflow: WorkflowReceipt
 
@@ -54,6 +57,7 @@ def assemble_attestation(
     evidence: ProviderEvidence,
     preflight: PreflightReceipt,
     staging: ExistingStaging,
+    surface_evidence: Mapping[str, object],
     control_commit: str,
     run_id: int,
     run_attempt: int,
@@ -62,6 +66,9 @@ def assemble_attestation(
     issued_at = _utc(now)
     if evidence.reviewed_sha != staging.reviewed_sha:
         raise AttestationError("attestation_identity_mismatch")
+    if surface_evidence.get("reviewed_commit_sha") != evidence.reviewed_sha:
+        raise AttestationError("attestation_identity_mismatch")
+    surface_digest, surface_count = _surface_digest(surface_evidence)
     payload = {
         "expires_at": issued_at + timedelta(minutes=60),
         "issued_at": issued_at,
@@ -75,6 +82,8 @@ def assemble_attestation(
             ref=staging.tag,
             tag_object_sha=staging.tag_object_sha,
         ),
+        "surface_count": surface_count,
+        "surface_evidence_sha256": surface_digest,
         "version": "0.2.2",
         "workflow": WorkflowReceipt(
             attempt=run_attempt,
@@ -114,6 +123,27 @@ def _payload_digest(payload: dict[str, object]) -> str:
     return hashlib.sha256(
         json.dumps(normalized, separators=(",", ":"), sort_keys=True).encode()
     ).hexdigest()
+
+
+def _surface_digest(evidence: Mapping[str, object]) -> tuple[str, int]:
+    surfaces = evidence.get("surfaces")
+    reviewed_sha = evidence.get("reviewed_commit_sha")
+    if not isinstance(surfaces, list) or len(surfaces) != 8 or not isinstance(reviewed_sha, str):
+        raise AttestationError("attestation_surface_evidence_invalid")
+    names: set[str] = set()
+    for surface in surfaces:
+        if (
+            not isinstance(surface, dict)
+            or surface.get("status") != "passed"
+            or surface.get("finding_count") != 0
+            or not isinstance(surface.get("surface"), str)
+        ):
+            raise AttestationError("attestation_surface_evidence_invalid")
+        names.add(surface["surface"])
+    if len(names) != 8:
+        raise AttestationError("attestation_surface_evidence_invalid")
+    encoded = json.dumps(_jsonable(dict(evidence)), separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(encoded.encode()).hexdigest(), len(surfaces)
 
 
 def _jsonable(value):
