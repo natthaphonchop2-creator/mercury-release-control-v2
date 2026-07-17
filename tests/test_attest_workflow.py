@@ -45,3 +45,16 @@ def test_attestation_workflow_never_executes_candidate_files() -> None:
     assert "source $RUNNER_TEMP" not in text
     assert "bash $RUNNER_TEMP" not in text
     assert 'git -C "$MIRROR" archive' in text
+
+
+def test_attestation_dispatch_does_not_relay_caller_supplied_staging_identity() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    dispatch = text.split(
+        "- name: Dispatch secretless Mercury artifact verification", 1
+    )[1]
+
+    assert "--arg staging_ref" not in dispatch
+    assert "--arg public_tree_digest" not in dispatch
+    assert "staging_ref:" not in dispatch
+    assert "public_tree_digest:" not in dispatch
+    assert "release_control_attestation_b64" in dispatch

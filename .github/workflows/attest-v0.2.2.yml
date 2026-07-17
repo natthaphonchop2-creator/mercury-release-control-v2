@@ -174,14 +174,10 @@ jobs:
           ATTESTATION="$RUNNER_TEMP/mercury-release/trusted-hosted-attestation.json"
           ATTESTATION_B64="$(base64 --wrap=0 "$ATTESTATION")"
           PAYLOAD_SHA256="$(sha256sum "$ATTESTATION" | awk '{print $1}')"
-          STAGING_REF="$(jq -er '.staging.ref' "$ATTESTATION")"
-          PUBLIC_TREE_DIGEST="$(jq -er '.public_tree_digest' "$ATTESTATION")"
           test "${#ATTESTATION_B64}" -le 60000
           jq -n \
             --arg ref main \
             --arg reviewed_main_sha "$REVIEWED_SHA" \
-            --arg staging_ref "$STAGING_REF" \
-            --arg public_tree_digest "$PUBLIC_TREE_DIGEST" \
             --arg control_commit "$GITHUB_SHA" \
             --arg control_run_id "$GITHUB_RUN_ID" \
             --arg control_run_attempt "$GITHUB_RUN_ATTEMPT" \
@@ -191,7 +187,6 @@ jobs:
             --arg control_repository_id "$GITHUB_REPOSITORY_ID" \
             --arg control_attestation_b64 "$ATTESTATION_B64" \
             '{ref: $ref, inputs: {reviewed_main_sha: $reviewed_main_sha,
-              staging_ref: $staging_ref, public_tree_digest: $public_tree_digest,
               release_control_commit: $control_commit,
               release_control_run_id: $control_run_id,
               release_control_run_attempt: $control_run_attempt,
