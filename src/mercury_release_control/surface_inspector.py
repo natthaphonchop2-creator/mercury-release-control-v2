@@ -448,17 +448,7 @@ def _validate_release_tag_ruleset(value: object) -> None:
         if not isinstance(rule_type, str):
             raise InspectionError("policy_release_tag_ruleset_invalid")
         if rule_type == "update":
-            _require_exact_keys(item, {"parameters", "type"}, "policy_release_tag_ruleset_invalid")
-            parameters = _require_mapping(
-                item.get("parameters"), "policy_release_tag_ruleset_invalid"
-            )
-            _require_exact_keys(
-                parameters,
-                {"update_allows_fetch_and_merge"},
-                "policy_release_tag_ruleset_invalid",
-            )
-            if parameters.get("update_allows_fetch_and_merge") is not False:
-                raise InspectionError("policy_release_tag_ruleset_invalid")
+            _require_exact_keys(item, {"type"}, "policy_release_tag_ruleset_invalid")
         else:
             _require_exact_keys(item, {"type"}, "policy_release_tag_ruleset_invalid")
         types.append(rule_type)
@@ -896,7 +886,7 @@ def _github_headers(token: str, *, accept: str = "application/vnd.github+json") 
     return {
         "Accept": accept,
         "Authorization": f"Bearer {token}",
-        "X-GitHub-Api-Version": "2022-11-28",
+        "X-GitHub-Api-Version": "2026-03-10",
     }
 
 

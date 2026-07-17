@@ -40,7 +40,7 @@ class GitHubApiReader:
                 "Accept": "application/vnd.github+json",
                 "Authorization": f"Bearer {self._token.get_secret_value()}",
                 "User-Agent": "mercury-release-control-v2",
-                "X-GitHub-Api-Version": "2022-11-28",
+                "X-GitHub-Api-Version": "2026-03-10",
             },
         )
         try:

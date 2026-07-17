@@ -11,7 +11,7 @@
   "inspector": {
     "interface_version": 2,
     "path": "src/mercury_release_control/surface_inspector.py",
-    "sha256": "689438acc0b2eb63bdfbe97d8960395d5d22ab8887ca3faaa70dfc7ad6fb4c7e"
+    "sha256": "32e40cf58b68a291a5b3be573f466e1d7d7ae4d8e0fb82b318394fcc8d948032"
   },
   "immutable_releases_required": true,
   "release_tag_ruleset": {
@@ -31,9 +31,6 @@
         "type": "deletion"
       },
       {
-        "parameters": {
-          "update_allows_fetch_and_merge": false
-        },
         "type": "update"
       }
     ],

@@ -20,10 +20,7 @@ def policy() -> dict[str, object]:
             "enforcement": "active",
             "rules": [
                 {"type": "deletion"},
-                {
-                    "parameters": {"update_allows_fetch_and_merge": False},
-                    "type": "update",
-                },
+                {"type": "update"},
             ],
             "target": "tag",
         },
