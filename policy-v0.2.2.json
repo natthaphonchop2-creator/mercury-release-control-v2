@@ -3,5 +3,9 @@
     "tag": "v0.2.2",
     "version": "0.2.2"
   },
-  "schema_version": 1
+  "schema_version": 1,
+  "staging": {
+    "repository": "natthaphonchop2-creator/mercury-tools-staging",
+    "tag_prefix": "v0.2.2-rc."
+  }
 }

@@ -5,14 +5,16 @@
     ".gitignore": "a722e716892ecf2ef776d391a96225708f387cd5fb6bfde4b181d1475a4c6dff",
     "LICENSE": "9902a3eec48dd57000744894b68fe22180fa0f8fa28bb8bc4b84ccb21a2f7470",
     "README.md": "5e4b56ad463297262aa691d470d26b72fe22481082aa5e8f1465c6dcd008ed65",
-    "policy-v0.2.2.json": "79924e4943fed8f76e1751e9458a2817b4558c5001feed9bc2805611af465ac1",
+    "policy-v0.2.2.json": "8d37eef588f1cbeba5db2b3b00eead2e5ba40fdfc93ba1be70d376dae54970c6",
     "pyproject.toml": "17909332eb946bddd0353b9affc21e8c5d52c7939d8718334e88e8909fe9450d",
     "src/mercury_release_control/__init__.py": "735f223b0e1fe89a4515496dbec2e3dbc30218c044a9085624e5ada69af22ad9",
     "src/mercury_release_control/guardian.py": "41911ba136d95503d8e867ac0cb717e597c834a8dcc6f747f6d4e8e789b760a0",
     "src/mercury_release_control/public_tree.py": "27b2e3bb0a74348cfc13b270920b68099c9264b751e53c56a54cebaa5431c29d",
+    "src/mercury_release_control/staging.py": "cabe4ce79c08e0b8769b5e44ab177243a460d38d3b4aa5acaac9ac00506bb8c9",
     "tests/fixtures/public-tree-v1.json": "f6612b942efa2f3b22bad8538961371ee1415d4cb2997bccde1a116677396806",
     "tests/test_guardian.py": "cd34135d8c1a65f85b116c9a085d84b08444d776ed34e26532d047f6b458f971",
     "tests/test_public_tree.py": "75b6505a521c417c662bb7e2330345f9c9134c5e8b31f7955f69773cb281fbfb",
+    "tests/test_staging.py": "62bde3e140c010b8c272a711108d44ac60f073364778a19dc512efb423781fe1",
     "uv.lock": "bb09e92bf3e8adc0888fba3e0d59c11ffda5297ec29e333c059438d35c187d2b"
   },
   "schema_version": 1
