@@ -29,15 +29,21 @@ TRUSTED_V030_PATHS = (
     ".github/workflows/migrate-v0.3.0.yml",
     ".github/workflows/publish-v0.2.2.yml",
     ".github/workflows/publish-v0.3.0.yml",
+    "policy-v0.2.2.json",
     "policy-v0.3.0.json",
     "pyproject.toml",
     "src/mercury_release_control/__init__.py",
     "src/mercury_release_control/attestation.py",
     "src/mercury_release_control/github_preflight.py",
+    "src/mercury_release_control/github_publication.py",
+    "src/mercury_release_control/handoff.py",
+    "src/mercury_release_control/hosted_collector.py",
     "src/mercury_release_control/preflight.py",
     "src/mercury_release_control/production_migration.py",
     "src/mercury_release_control/provider_inspector.py",
     "src/mercury_release_control/public_tree.py",
+    "src/mercury_release_control/publication.py",
+    "src/mercury_release_control/publish_workflow.py",
     "src/mercury_release_control/release_profile.py",
     "src/mercury_release_control/staging.py",
     "src/mercury_release_control/surface_inspector.py",
@@ -236,6 +242,17 @@ def test_guardian_pins_exact_v030_privileged_runtime_import_closure() -> None:
             guardian.V030_TRUSTED_FILE_SHA256[path]
             == hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
         )
+
+
+def test_guardian_pins_every_release_control_runtime_module_except_itself() -> None:
+    runtime_root = ROOT / "src/mercury_release_control"
+    runtime_paths = {
+        path.relative_to(ROOT).as_posix()
+        for path in runtime_root.glob("*.py")
+        if path.name != "guardian.py"
+    }
+
+    assert runtime_paths <= set(guardian.V030_TRUSTED_FILE_SHA256)
 
 
 @pytest.mark.parametrize("path", TRUSTED_V030_PATHS)
