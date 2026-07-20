@@ -7,7 +7,7 @@ def _policy() -> dict[str, object]:
     return {
         "branch": "main",
         "environment": "production-release",
-        "release_tag_ruleset": {"name": "Mercury v0.2.2 immutable release tag"},
+        "release_tag_ruleset": {"name": "Mercury v0.3.0 immutable release tag"},
         "repository": "example/control",
         "repository_id": 42,
         "reviewed_repository": "example/target",
@@ -68,19 +68,19 @@ class FakeGitHub:
             "/repos/example/control/actions/secrets?per_page=100": {"secrets": []},
             "/repos/example/target/actions/secrets?per_page=100": {"secrets": []},
             "/repos/example/target/rulesets?per_page=100": [
-                {"id": 9, "name": "Mercury v0.2.2 immutable release tag"}
+                {"id": 9, "name": "Mercury v0.3.0 immutable release tag"}
             ],
             "/repos/example/target/rulesets/9": {
                 "bypass_actors": [],
                 "conditions": {
                     "ref_name": {
                         "exclude": [],
-                        "include": ["refs/tags/v0.2.2"],
+                        "include": ["refs/tags/v0.3.0"],
                     }
                 },
                 "enforcement": "active",
                 "id": 9,
-                "name": "Mercury v0.2.2 immutable release tag",
+                "name": "Mercury v0.3.0 immutable release tag",
                 "rules": [{"type": "deletion"}],
                 "target": "tag",
             },

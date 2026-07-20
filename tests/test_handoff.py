@@ -31,7 +31,7 @@ def expected() -> ReleaseIdentity:
         release_bundle_artifact_digest="8" * 64,
         release_bundle_artifact_id=303,
         reviewed_sha="5" * 40,
-        staging_ref="v0.2.2-rc." + "5" * 12,
+        staging_ref="v0.3.0-rc." + "5" * 12,
     )
 
 
@@ -40,12 +40,12 @@ def payload(expected: ReleaseIdentity) -> dict[str, object]:
     return {
         "artifacts": [
             {
-                "name": "mercury_tools-0.2.2-py3-none-any.whl",
+                "name": "mercury_tools-0.3.0-py3-none-any.whl",
                 "sha256": "6" * 64,
                 "size": 1234,
             },
             {
-                "name": "mercury_tools-0.2.2.tar.gz",
+                "name": "mercury_tools-0.3.0.tar.gz",
                 "sha256": "7" * 64,
                 "size": 2345,
             },
@@ -56,7 +56,7 @@ def payload(expected: ReleaseIdentity) -> dict[str, object]:
             "repository_id": expected.mercury_repository_id,
             "run_attempt": expected.mercury_run_attempt,
             "run_id": expected.mercury_run_id,
-            "workflow_path": ".github/workflows/release-v0.2.2.yml",
+            "workflow_path": ".github/workflows/release-v0.3.0.yml",
         },
         "original_release_control": {
             "artifact_digest": expected.control_artifact_digest,
@@ -71,12 +71,12 @@ def payload(expected: ReleaseIdentity) -> dict[str, object]:
         "release_bundle": {
             "artifact_digest": "8" * 64,
             "artifact_id": 303,
-            "name": "mercury-v0.2.2-release-artifacts-2002-attempt-2",
+            "name": "mercury-v0.3.0-release-artifacts-2002-attempt-2",
         },
         "reviewed_sha": expected.reviewed_sha,
         "schema_version": 3,
         "staging_ref": expected.staging_ref,
-        "version": "0.2.2",
+        "version": "0.3.0",
     }
 
 
@@ -102,7 +102,7 @@ def payload(expected: ReleaseIdentity) -> dict[str, object]:
             "handoff_mercury_identity_mismatch",
         ),
         (("public_tree_digest",), "0" * 64, "handoff_release_identity_mismatch"),
-        (("staging_ref",), "v0.2.2-rc." + "0" * 12, "handoff_release_identity_mismatch"),
+        (("staging_ref",), "v0.3.0-rc." + "0" * 12, "handoff_release_identity_mismatch"),
     ],
 )
 def test_handoff_rejects_identity_mismatch(
@@ -129,8 +129,8 @@ def test_handoff_accepts_exact_fresh_bounded_artifacts(
 
     assert verified.reviewed_sha == expected.reviewed_sha
     assert [asset.name for asset in verified.artifacts] == [
-        "mercury_tools-0.2.2-py3-none-any.whl",
-        "mercury_tools-0.2.2.tar.gz",
+        "mercury_tools-0.3.0-py3-none-any.whl",
+        "mercury_tools-0.3.0.tar.gz",
     ]
 
 

@@ -29,12 +29,12 @@ def _handoff() -> VerifiedHandoff:
             {
                 "artifacts": [
                     {
-                        "name": "mercury_tools-0.2.2-py3-none-any.whl",
+                        "name": "mercury_tools-0.3.0-py3-none-any.whl",
                         "sha256": hashlib.sha256(WHEEL).hexdigest(),
                         "size": len(WHEEL),
                     },
                     {
-                        "name": "mercury_tools-0.2.2.tar.gz",
+                        "name": "mercury_tools-0.3.0.tar.gz",
                         "sha256": hashlib.sha256(SDIST).hexdigest(),
                         "size": len(SDIST),
                     },
@@ -45,7 +45,7 @@ def _handoff() -> VerifiedHandoff:
                     "repository_id": 84,
                     "run_attempt": 1,
                     "run_id": 2002,
-                    "workflow_path": ".github/workflows/release-v0.2.2.yml",
+                    "workflow_path": ".github/workflows/release-v0.3.0.yml",
                 },
                 "original_release_control": {
                     "artifact_digest": "1" * 64,
@@ -60,12 +60,12 @@ def _handoff() -> VerifiedHandoff:
                 "release_bundle": {
                     "artifact_digest": "8" * 64,
                     "artifact_id": 303,
-                    "name": "mercury-v0.2.2-release-artifacts-2002-attempt-1",
+                    "name": "mercury-v0.3.0-release-artifacts-2002-attempt-1",
                 },
                 "reviewed_sha": COMMIT,
                 "schema_version": 3,
-                "staging_ref": "v0.2.2-rc." + COMMIT[:12],
-                "version": "0.2.2",
+                "staging_ref": "v0.3.0-rc." + COMMIT[:12],
+                "version": "0.3.0",
             }
         )
     )
@@ -148,7 +148,7 @@ def test_publication_state_machine_rejects_skip_and_reverse() -> None:
 
 
 def test_publication_checks_all_assets_before_first_tag_api_call() -> None:
-    plan = publication_plan(_handoff(), release_notes="Mercury v0.2.2")
+    plan = publication_plan(_handoff(), release_notes="Mercury v0.3.0")
     backend = FakeBackend()
 
     with pytest.raises(PublicationError, match="^publication_asset_digest_mismatch$"):
@@ -156,8 +156,8 @@ def test_publication_checks_all_assets_before_first_tag_api_call() -> None:
             plan,
             backend=backend,
             assets={
-                "mercury_tools-0.2.2-py3-none-any.whl": b"tampered",
-                "mercury_tools-0.2.2.tar.gz": SDIST,
+                "mercury_tools-0.3.0-py3-none-any.whl": b"tampered",
+                "mercury_tools-0.3.0.tar.gz": SDIST,
             },
         )
 
@@ -165,61 +165,61 @@ def test_publication_checks_all_assets_before_first_tag_api_call() -> None:
 
 
 def test_publication_rejects_mismatched_existing_tag_release_and_assets() -> None:
-    plan = publication_plan(_handoff(), release_notes="Mercury v0.2.2")
+    plan = publication_plan(_handoff(), release_notes="Mercury v0.3.0")
     assets = {
-        "mercury_tools-0.2.2-py3-none-any.whl": WHEEL,
-        "mercury_tools-0.2.2.tar.gz": SDIST,
+        "mercury_tools-0.3.0-py3-none-any.whl": WHEEL,
+        "mercury_tools-0.3.0.tar.gz": SDIST,
     }
     backend = FakeBackend()
-    backend.tag = RemoteTag(annotated=True, commit="b" * 40, name="v0.2.2")
+    backend.tag = RemoteTag(annotated=True, commit="b" * 40, name="v0.3.0")
     with pytest.raises(PublicationError, match="^publication_tag_mismatch$"):
         publish_release(plan, backend=backend, assets=assets)
 
     backend = FakeBackend()
-    backend.tag = RemoteTag(annotated=True, commit=COMMIT, name="v0.2.2")
+    backend.tag = RemoteTag(annotated=True, commit=COMMIT, name="v0.3.0")
     backend.release = RemoteRelease(
         assets=(),
         draft=False,
         immutable=False,
         name="wrong",
         release_id=900,
-        tag="v0.2.2",
+        tag="v0.3.0",
     )
     with pytest.raises(PublicationError, match="^publication_release_exists$"):
         publish_release(plan, backend=backend, assets=assets)
 
     backend = FakeBackend()
-    backend.tag = RemoteTag(annotated=True, commit=COMMIT, name="v0.2.2")
+    backend.tag = RemoteTag(annotated=True, commit=COMMIT, name="v0.3.0")
     backend.release = RemoteRelease(
         assets=(RemoteAsset(name="existing.whl", sha256="0" * 64, size=1),),
         draft=True,
         immutable=False,
-        name="Mercury v0.2.2",
+        name="Mercury v0.3.0",
         release_id=900,
-        tag="v0.2.2",
+        tag="v0.3.0",
     )
     with pytest.raises(PublicationError, match="^publication_asset_overwrite_forbidden$"):
         publish_release(plan, backend=backend, assets=assets)
 
 
 def test_publication_creates_draft_verifies_downloads_then_enables_immutable() -> None:
-    plan = publication_plan(_handoff(), release_notes="Mercury v0.2.2")
+    plan = publication_plan(_handoff(), release_notes="Mercury v0.3.0")
     backend = FakeBackend()
 
     result = publish_release(
         plan,
         backend=backend,
         assets={
-            "mercury_tools-0.2.2-py3-none-any.whl": WHEEL,
-            "mercury_tools-0.2.2.tar.gz": SDIST,
+            "mercury_tools-0.3.0-py3-none-any.whl": WHEEL,
+            "mercury_tools-0.3.0.tar.gz": SDIST,
         },
     )
 
     assert result.state is PublicationState.PUBLISHED_IMMUTABLE
     assert backend.calls.index("create_draft") < backend.calls.index(
-        "download:mercury_tools-0.2.2-py3-none-any.whl"
+        "download:mercury_tools-0.3.0-py3-none-any.whl"
     )
-    assert backend.calls.index("download:mercury_tools-0.2.2.tar.gz") < backend.calls.index(
+    assert backend.calls.index("download:mercury_tools-0.3.0.tar.gz") < backend.calls.index(
         "publish"
     )
     assert backend.calls.index("enable_immutable") < backend.calls.index("publish")
@@ -227,7 +227,7 @@ def test_publication_creates_draft_verifies_downloads_then_enables_immutable() -
 
 
 def test_publication_never_publishes_when_immutable_policy_does_not_stick() -> None:
-    plan = publication_plan(_handoff(), release_notes="Mercury v0.2.2")
+    plan = publication_plan(_handoff(), release_notes="Mercury v0.3.0")
     backend = IgnoringImmutableBackend()
 
     with pytest.raises(PublicationError, match="^publication_immutable_policy_invalid$"):
@@ -235,8 +235,8 @@ def test_publication_never_publishes_when_immutable_policy_does_not_stick() -> N
             plan,
             backend=backend,
             assets={
-                "mercury_tools-0.2.2-py3-none-any.whl": WHEEL,
-                "mercury_tools-0.2.2.tar.gz": SDIST,
+                "mercury_tools-0.3.0-py3-none-any.whl": WHEEL,
+                "mercury_tools-0.3.0.tar.gz": SDIST,
             },
         )
 

@@ -206,7 +206,7 @@ class GitHubRestApi:
         self._api_url = api_url
 
     def read_staging(self, repository: str, tag: str) -> ExistingStaging | None:
-        if _REPOSITORY.fullmatch(repository) is None or not tag.startswith("v0.2.2-rc."):
+        if _REPOSITORY.fullmatch(repository) is None or not tag.startswith("v0.3.0-rc."):
             raise StagingError("staging_repository_invalid")
         encoded_tag = urllib.parse.quote(tag, safe="")
         reference = self._request("GET", f"/repos/{repository}/git/ref/tags/{encoded_tag}")
@@ -344,7 +344,7 @@ def build_staging(
         environment = _git_environment(empty_template, isolated_home)
         _run_git(repository, environment, "init", "--initial-branch=main")
         _run_git(repository, environment, "add", "--all")
-        tag = f"v0.2.2-rc.{reviewed_sha[:12]}"
+        tag = f"v0.3.0-rc.{reviewed_sha[:12]}"
         _run_git(
             repository,
             environment,

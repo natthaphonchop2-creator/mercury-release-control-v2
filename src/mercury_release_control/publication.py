@@ -97,7 +97,7 @@ def publication_plan(
     release_notes: str,
 ) -> PublicationPlan:
     if (
-        handoff.version != "0.2.2"
+        handoff.version != "0.3.0"
         or not isinstance(release_notes, str)
         or not release_notes.strip()
         or release_notes != release_notes.strip()
@@ -107,9 +107,9 @@ def publication_plan(
     return PublicationPlan(
         assets=handoff.artifacts,
         commit=handoff.reviewed_sha,
-        release_name="Mercury v0.2.2",
+        release_name="Mercury v0.3.0",
         release_notes=release_notes,
-        tag="v0.2.2",
+        tag="v0.3.0",
     )
 
 

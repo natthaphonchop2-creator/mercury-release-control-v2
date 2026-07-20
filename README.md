@@ -1,6 +1,6 @@
 # Mercury Release Control v2
 
-Trusted release control plane for Mercury Tools `v0.2.2`.
+Trusted release control plane for Mercury Tools `v0.3.0`.
 
 This repository verifies reviewed Mercury source as untrusted bytes, creates a
 history-free public staging snapshot, inspects approved hosted providers, emits

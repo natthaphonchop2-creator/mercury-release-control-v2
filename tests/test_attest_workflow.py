@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/attest-v0.2.2.yml"
+WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/attest-v0.3.0.yml"
 ACTION_PIN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$")
 
 
@@ -34,7 +34,7 @@ def test_attestation_workflow_is_pinned_single_artifact_and_dependency_ordered()
     assert len([action for action in actions if action.startswith("actions/upload-artifact@")]) == 1
     assert all(ACTION_PIN.fullmatch(action) for action in actions)
     assert "pull_request_target" not in text
-    assert "release-v0.2.2.yml/dispatches" in text
+    assert "release-v0.3.0.yml/dispatches" in text
 
 
 def test_attestation_workflow_never_executes_candidate_files() -> None:

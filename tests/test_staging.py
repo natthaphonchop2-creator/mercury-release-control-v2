@@ -62,7 +62,7 @@ def test_staging_is_one_unrelated_commit_with_exact_public_tree(tmp_path: Path) 
         output=output,
     )
 
-    assert identity.tag == f"v0.2.2-rc.{REVIEWED_SHA[:12]}"
+    assert identity.tag == f"v0.3.0-rc.{REVIEWED_SHA[:12]}"
     assert (
         identity.tree_digest == "ca938b2aaaf87fbc8d9a92fac7e0f355070da77e8588c429742d8d5699084d7a"
     )
@@ -243,7 +243,7 @@ def test_github_rest_api_reconstructs_and_verifies_remote_public_tree(
     commit_sha = "b" * 40
     tag_object_sha = "c" * 40
     tree_sha = "d" * 40
-    tag = f"v0.2.2-rc.{reviewed_sha[:12]}"
+    tag = f"v0.3.0-rc.{reviewed_sha[:12]}"
     tree_digest = "ca938b2aaaf87fbc8d9a92fac7e0f355070da77e8588c429742d8d5699084d7a"
     contents = {
         "README.md": b"Mercury public tree fixture\n",

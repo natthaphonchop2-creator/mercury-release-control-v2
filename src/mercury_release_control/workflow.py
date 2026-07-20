@@ -1,4 +1,4 @@
-"""Trusted CLI entrypoints used by the v0.2.2 attestation workflow."""
+"""Trusted CLI entrypoints used by the v0.3.0 attestation workflow."""
 
 from __future__ import annotations
 

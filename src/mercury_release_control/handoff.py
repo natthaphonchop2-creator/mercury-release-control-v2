@@ -32,7 +32,7 @@ class ReleaseIdentity(_HandoffModel):
     release_bundle_artifact_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     release_bundle_artifact_id: int = Field(gt=0)
     reviewed_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
-    staging_ref: str = Field(pattern=r"^v0\.2\.2-rc\.[0-9a-f]{12}$")
+    staging_ref: str = Field(pattern=r"^v0\.3\.0-rc\.[0-9a-f]{12}$")
 
 
 class ReleaseArtifact(_HandoffModel):
@@ -45,7 +45,7 @@ class MercuryWorkflowIdentity(_HandoffModel):
     repository_id: int = Field(gt=0)
     run_attempt: int = Field(gt=0)
     run_id: int = Field(gt=0)
-    workflow_path: Literal[".github/workflows/release-v0.2.2.yml"]
+    workflow_path: Literal[".github/workflows/release-v0.3.0.yml"]
 
 
 class OriginalControlIdentity(_HandoffModel):
@@ -62,7 +62,7 @@ class ReleaseBundleIdentity(_HandoffModel):
     artifact_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     artifact_id: int = Field(gt=0)
     name: str = Field(
-        pattern=r"^mercury-v0\.2\.2-release-artifacts-[1-9][0-9]*-attempt-[1-9][0-9]*$"
+        pattern=r"^mercury-v0\.3\.0-release-artifacts-[1-9][0-9]*-attempt-[1-9][0-9]*$"
     )
 
 
@@ -76,8 +76,8 @@ class VerifiedHandoff(_HandoffModel):
     release_bundle: ReleaseBundleIdentity
     reviewed_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
     schema_version: Literal[3]
-    staging_ref: str = Field(pattern=r"^v0\.2\.2-rc\.[0-9a-f]{12}$")
-    version: Literal["0.2.2"]
+    staging_ref: str = Field(pattern=r"^v0\.3\.0-rc\.[0-9a-f]{12}$")
+    version: Literal["0.3.0"]
 
 
 def verify_handoff(
@@ -110,14 +110,14 @@ def verify_handoff(
         or handoff.release_bundle.artifact_id != expected.release_bundle_artifact_id
         or handoff.release_bundle.artifact_digest != expected.release_bundle_artifact_digest
         or handoff.release_bundle.name
-        != (f"mercury-v0.2.2-release-artifacts-{mercury.run_id}-attempt-{mercury.run_attempt}")
+        != (f"mercury-v0.3.0-release-artifacts-{mercury.run_id}-attempt-{mercury.run_attempt}")
     ):
         raise HandoffError("handoff_mercury_identity_mismatch")
     if (
         handoff.reviewed_sha != expected.reviewed_sha
         or handoff.public_tree_digest != expected.public_tree_digest
         or handoff.staging_ref != expected.staging_ref
-        or handoff.staging_ref != f"v0.2.2-rc.{handoff.reviewed_sha[:12]}"
+        or handoff.staging_ref != f"v0.3.0-rc.{handoff.reviewed_sha[:12]}"
     ):
         raise HandoffError("handoff_release_identity_mismatch")
     observed_at = _utc(now)

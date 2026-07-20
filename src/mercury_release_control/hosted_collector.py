@@ -27,21 +27,25 @@ _EXPECTED_TOOLS = frozenset(
         "connector_status",
         "create_public_workspace",
         "flow_cheat_sheet",
+        "get_accounting_skill_schema",
+        "get_connector_setup",
         "get_document",
         "get_public_workspace",
         "inspect_flow_files",
+        "link_connector_profile",
+        "list_accounting_skills",
         "list_connectors",
         "list_workspace_flows",
         "retrieve_context_pack",
         "retrieve_workspace_context_pack",
         "run_accounting_skill",
-        "run_flow",
         "run_flow_files",
-        "run_mercury_flow",
+        "run_inline_flow",
         "run_workspace_flow",
         "save_workspace_flow",
         "search_knowledge",
-        "start_connector_setup",
+        "unlink_connector_profile",
+        "validate_connector_connection",
     }
 )
 _CREDENTIAL_KEY = re.compile(
@@ -137,7 +141,7 @@ class HostedProviderCollector:
         if (
             not isinstance(status, dict)
             or status.get("status") != "ok"
-            or status.get("version") != "0.2.2"
+            or status.get("version") != "0.3.0"
             or status.get("deployment_commit") != reviewed_sha
         ):
             raise InspectionError("render_status_invalid")
@@ -159,7 +163,7 @@ class HostedProviderCollector:
             raise InspectionError("public_mcp_initialize_invalid")
         tools = mcp.list_tools()
         names = {tool.get("name") for tool in tools if isinstance(tool, dict)}
-        if len(tools) != 20 or names != _EXPECTED_TOOLS:
+        if len(tools) != 24 or names != _EXPECTED_TOOLS:
             raise InspectionError("public_mcp_tool_inventory_invalid")
         if any(_contains_credential_key(tool.get("inputSchema")) for tool in tools):
             raise InspectionError("public_mcp_boundary_invalid")
@@ -184,7 +188,7 @@ class HostedProviderCollector:
                 "hosted_tool_count": len(tools),
                 "logs_scanned": True,
                 "status": "live",
-                "version": "0.2.2",
+                "version": "0.3.0",
             },
             {
                 "catalog_action_count": len(actions),
@@ -310,7 +314,7 @@ class _McpProbe:
             "initialize",
             {
                 "capabilities": {},
-                "clientInfo": {"name": "mercury-release-control-v2", "version": "0.2.2"},
+                "clientInfo": {"name": "mercury-release-control-v2", "version": "0.3.0"},
                 "protocolVersion": "2025-03-26",
             },
         )

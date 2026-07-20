@@ -29,7 +29,7 @@ REQUIRED_FILES = frozenset(
         "LICENSE",
         "README.md",
         MANIFEST_PATH,
-        "policy-v0.2.2.json",
+        "policy-v0.3.0.json",
         "pyproject.toml",
         "src/mercury_release_control/__init__.py",
         "src/mercury_release_control/guardian.py",
@@ -48,6 +48,8 @@ _ALLOWED_PERMISSIONS = {
     "guardian.yml": {"contents": "read", "pull-requests": "read"},
     "attest-v0.2.2.yml": {"actions": "write", "contents": "read"},
     "publish-v0.2.2.yml": {"actions": "read", "contents": "read"},
+    "attest-v0.3.0.yml": {"actions": "write", "contents": "read"},
+    "publish-v0.3.0.yml": {"actions": "read", "contents": "read"},
 }
 
 
@@ -89,7 +91,7 @@ def verify_candidate_archive(archive_bytes: bytes) -> GuardianReceipt:
         for value in declared.values()
     ):
         raise GuardianError("candidate_manifest_invalid")
-    _validate_policy(files["policy-v0.2.2.json"])
+    _validate_policy(files["policy-v0.3.0.json"])
     for path, content in files.items():
         if path.startswith(".github/workflows/"):
             _validate_workflow(path, content)
@@ -222,7 +224,7 @@ def _validate_policy(content: bytes) -> None:
     if (
         policy.get("schema_version") != 2
         or not isinstance(release, Mapping)
-        or dict(release) != {"tag": "v0.2.2", "version": "0.2.2"}
+        or dict(release) != {"tag": "v0.3.0", "version": "0.3.0"}
         or policy.get("repository") != "natthaphonchop2-creator/mercury-release-control-v2"
         or policy.get("reviewed_repository") != "natthaphonchop2-creator/mercury-tools"
         or policy.get("staging_repository") != "natthaphonchop2-creator/mercury-tools-staging"
@@ -232,15 +234,15 @@ def _validate_policy(content: bytes) -> None:
         or dict(staging)
         != {
             "repository": "natthaphonchop2-creator/mercury-tools-staging",
-            "tag_prefix": "v0.2.2-rc.",
+            "tag_prefix": "v0.3.0-rc.",
         }
         or not isinstance(expectations, Mapping)
         or dict(expectations)
         != {
             "catalog_action_count": 254,
             "flowaccount_environment": "sandbox",
-            "hosted_tool_count": 20,
-            "supabase_function_count": 10,
+            "hosted_tool_count": 24,
+            "supabase_function_count": 11,
             "supabase_table_count": 17,
         }
         or required_variables

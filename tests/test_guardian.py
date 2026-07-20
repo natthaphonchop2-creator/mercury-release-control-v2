@@ -14,7 +14,7 @@ from mercury_release_control.guardian import (
 )
 
 CHECKOUT_PIN = "34e114876b0b11c390a56381ad16ebd13914f8d5"
-POLICY = Path(__file__).resolve().parents[1] / "policy-v0.2.2.json"
+POLICY = Path(__file__).resolve().parents[1] / "policy-v0.3.0.json"
 
 
 def _ci_workflow() -> bytes:
@@ -59,9 +59,9 @@ def _candidate_files(marker: Path | None = None) -> dict[str, bytes]:
         ".gitignore": b".venv/\n",
         "LICENSE": b"MIT\n",
         "README.md": b"Mercury release control\n",
-        "policy-v0.2.2.json": POLICY.read_bytes(),
-        "pyproject.toml": b"[project]\nname='mercury-release-control'\nversion='0.2.2'\n",
-        "src/mercury_release_control/__init__.py": b"__version__ = '0.2.2'\n",
+        "policy-v0.3.0.json": POLICY.read_bytes(),
+        "pyproject.toml": b"[project]\nname='mercury-release-control'\nversion='0.3.0'\n",
+        "src/mercury_release_control/__init__.py": b"__version__ = '0.3.0'\n",
         "src/mercury_release_control/guardian.py": payload,
         "uv.lock": b"version = 1\n",
     }
@@ -200,7 +200,7 @@ def test_guardian_allows_secret_variable_reads() -> None:
 
 def test_guardian_rejects_duplicate_policy_keys() -> None:
     files = _candidate_files()
-    files["policy-v0.2.2.json"] = b'{"schema_version":2,"schema_version":2}'
+    files["policy-v0.3.0.json"] = b'{"schema_version":2,"schema_version":2}'
     files["control-manifest.json"] = json.dumps(
         build_manifest_payload(
             {key: value for key, value in files.items() if key != "control-manifest.json"}
@@ -215,9 +215,9 @@ def test_guardian_rejects_duplicate_policy_keys() -> None:
 
 def test_guardian_rejects_policy_without_required_render_owner_variable() -> None:
     files = _candidate_files()
-    policy = json.loads(files["policy-v0.2.2.json"])
+    policy = json.loads(files["policy-v0.3.0.json"])
     policy["required_environment_variables"].remove("RENDER_OWNER_ID")
-    files["policy-v0.2.2.json"] = json.dumps(policy, separators=(",", ":"), sort_keys=True).encode()
+    files["policy-v0.3.0.json"] = json.dumps(policy, separators=(",", ":"), sort_keys=True).encode()
     files["control-manifest.json"] = json.dumps(
         build_manifest_payload(
             {key: value for key, value in files.items() if key != "control-manifest.json"}

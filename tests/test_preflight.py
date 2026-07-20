@@ -16,7 +16,7 @@ def policy() -> dict[str, object]:
         "immutable_releases_required": True,
         "release_tag_ruleset": {
             "bypass_actors": [],
-            "conditions": {"ref_name": {"exclude": [], "include": ["refs/tags/v0.2.2"]}},
+            "conditions": {"ref_name": {"exclude": [], "include": ["refs/tags/v0.3.0"]}},
             "enforcement": "active",
             "rules": [
                 {"type": "deletion"},

@@ -107,6 +107,7 @@ _REQUIRED_FUNCTIONS = (
         "public.match_knowledge_chunks("
         "text,vector,integer,text,text,text,text,text,date,text,text,text,text,text)"
     ),
+    "public.mercury_capability_states_are_safe(jsonb)",
     "public.reject_validation_evidence_mutation()",
     "public.resolve_erp_action_validation_batch(jsonb,timestamp with time zone)",
     "public.validation_label_kind(text)",
@@ -152,7 +153,7 @@ _REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _PROJECT_RE = re.compile(r"^[a-z0-9]{20}$")
-_STAGING_REF_RE = re.compile(r"^v0\.2\.2-rc\.[0-9a-f]{12}$")
+_STAGING_REF_RE = re.compile(r"^v0\.3\.0-rc\.[0-9a-f]{12}$")
 _ENV_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,127}$")
 _SERVICE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _RENDER_OWNER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
@@ -438,7 +439,7 @@ def _validate_release_tag_ruleset(value: object) -> None:
     _require_exact_keys(conditions, {"ref_name"}, "policy_release_tag_ruleset_invalid")
     ref_name = _require_mapping(conditions.get("ref_name"), "policy_release_tag_ruleset_invalid")
     _require_exact_keys(ref_name, {"exclude", "include"}, "policy_release_tag_ruleset_invalid")
-    if ref_name.get("include") != ["refs/tags/v0.2.2"] or ref_name.get("exclude") != []:
+    if ref_name.get("include") != ["refs/tags/v0.3.0"] or ref_name.get("exclude") != []:
         raise InspectionError("policy_release_tag_ruleset_invalid")
     rules = ruleset.get("rules")
     if not isinstance(rules, list) or len(rules) != 2:
@@ -479,19 +480,19 @@ def validate_policy(policy: Mapping[str, object]) -> Mapping[str, object]:
         raise InspectionError("policy_repository_identity_invalid")
     if policy.get("branch") != "main" or policy.get("environment") != "production-release":
         raise InspectionError("policy_release_boundary_invalid")
-    if policy.get("release") != {"tag": "v0.2.2", "version": "0.2.2"}:
+    if policy.get("release") != {"tag": "v0.3.0", "version": "0.3.0"}:
         raise InspectionError("policy_release_boundary_invalid")
     if policy.get("staging") != {
         "repository": policy.get("staging_repository"),
-        "tag_prefix": "v0.2.2-rc.",
+        "tag_prefix": "v0.3.0-rc.",
     }:
         raise InspectionError("policy_staging_invalid")
     if policy.get("provider_expectations") != {
         "flowaccount_environment": "sandbox",
-        "hosted_tool_count": 20,
+        "hosted_tool_count": 24,
         "catalog_action_count": 254,
         "supabase_table_count": 17,
-        "supabase_function_count": 10,
+        "supabase_function_count": 11,
     }:
         raise InspectionError("policy_provider_expectations_invalid")
     inspector = _require_mapping(policy.get("inspector"), "policy_inspector_invalid")
@@ -554,7 +555,7 @@ def validate_policy(policy: Mapping[str, object]) -> Mapping[str, object]:
     project_ref = supabase.get("project_ref")
     if not isinstance(project_ref, str) or _PROJECT_RE.fullmatch(project_ref) is None:
         raise InspectionError("supabase_project_ref_invalid")
-    if supabase.get("migration_id") != "20260716100000":
+    if supabase.get("migration_id") != "20260719120000":
         raise InspectionError("supabase_migration_invalid")
     _require_sha(supabase.get("migration_history_sha256"), "supabase_migration_history_invalid")
     if tuple(supabase.get("tables", ())) != _CANONICAL_TABLES:
@@ -2306,7 +2307,7 @@ def _render_status_endpoint(
     endpoint = status_payload.get("mcp_endpoint")
     if (
         status_payload.get("status") != "ok"
-        or status_payload.get("version") != "0.2.2"
+        or status_payload.get("version") != "0.3.0"
         or status_payload.get("deployment_commit") != reviewed_sha
         or not isinstance(endpoint, str)
         or not endpoint.startswith(base_url + "/")
@@ -2447,7 +2448,7 @@ def _inspect_render_and_public_mcp(
         cursor = next_cursor
     else:
         raise InspectionError("public_mcp_tool_inventory_invalid")
-    if len(tool_rows) != 20:
+    if len(tool_rows) != 24:
         raise InspectionError("public_mcp_tool_inventory_invalid")
     tool_names = []
     for row in tool_rows:
@@ -2457,7 +2458,7 @@ def _inspect_render_and_public_mcp(
             raise InspectionError("public_mcp_tool_inventory_invalid")
         _assert_sanitized(tool.get("inputSchema"))
         tool_names.append(name)
-    if len(set(tool_names)) != 20:
+    if len(set(tool_names)) != 24:
         raise InspectionError("public_mcp_tool_inventory_invalid")
     samples: list[HttpResponse] = []
     sample_requests: list[tuple[int, str, str, Mapping[str, object], str]] = []
@@ -2557,8 +2558,8 @@ def _inspect_render_and_public_mcp(
     return (
         {
             "deployment_commit": status_payload["deployment_commit"],
-            "version": "0.2.2",
-            "hosted_tool_count": 20,
+            "version": "0.3.0",
+            "hosted_tool_count": 24,
             "evidence_sha256": _canonical_sha256(
                 {"render": render_hashes, "tools": sorted(tool_names)}
             ),
@@ -2734,7 +2735,7 @@ def inspect_database(
         observed: dict[str, object] = {
             "project_ref": project_ref,
             "project_ref_sha256": _sha256_bytes(project_ref.encode("utf-8")),
-            "migration_id": "20260716100000",
+            "migration_id": "20260719120000",
             "migration_history_sha256": migration_digest,
             "tables": list(tables),
             "storage_buckets": list(buckets),

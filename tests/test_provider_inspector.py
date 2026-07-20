@@ -23,14 +23,14 @@ def valid_provider_state() -> dict[str, object]:
         "render": {
             "catalog_action_count": 254,
             "commit": REVIEWED_SHA,
-            "hosted_tool_count": 20,
+            "hosted_tool_count": 24,
             "logs_scanned": True,
             "status": "live",
-            "version": "0.2.2",
+            "version": "0.3.0",
         },
         "supabase": {
-            "function_count": 10,
-            "migration_id": "20260716100000",
+            "function_count": 11,
+            "migration_id": "20260719120000",
             "project_ref_sha256": hashlib.sha256(b"vbnlkqvauqwnjbxngkas").hexdigest(),
             "rag_identity_count": 254,
             "read_only": True,
@@ -45,7 +45,7 @@ def valid_provider_state() -> dict[str, object]:
         "public_mcp": {
             "catalog_action_count": 254,
             "flowaccount_citations": 1,
-            "hosted_tool_count": 20,
+            "hosted_tool_count": 24,
             "peak_citations": 1,
             "status": 200,
             "write_tools_exposed": False,
@@ -80,7 +80,7 @@ def test_provider_inspector_fails_closed(
     state = copy.deepcopy(valid_provider_state)
     mutation(state)
     with pytest.raises(InspectionError, match=f"^{code}$"):
-        inspect_provider_state(state, reviewed_sha=REVIEWED_SHA, version="0.2.2")
+        inspect_provider_state(state, reviewed_sha=REVIEWED_SHA, version="0.3.0")
 
 
 def test_provider_evidence_is_bounded_and_sanitized(
@@ -89,11 +89,11 @@ def test_provider_evidence_is_bounded_and_sanitized(
     evidence = inspect_provider_state(
         valid_provider_state,
         reviewed_sha=REVIEWED_SHA,
-        version="0.2.2",
+        version="0.3.0",
     )
     encoded = evidence.model_dump_json()
 
-    assert evidence.render.hosted_tool_count == 20
+    assert evidence.render.hosted_tool_count == 24
     assert evidence.public_mcp.catalog_action_count == 254
     for forbidden in ("client_secret", "access_token", "@", "/Users/"):
         assert forbidden not in encoded
@@ -111,7 +111,7 @@ def test_inspect_providers_binds_collector_to_staging_identity(
 
     staging = SimpleNamespace(reviewed_sha=REVIEWED_SHA)
     evidence = inspect_providers(
-        policy={"release": {"version": "0.2.2"}},
+        policy={"release": {"version": "0.3.0"}},
         environment={"SAFE": "value"},
         reviewed_sha=REVIEWED_SHA,
         staging=staging,
@@ -121,7 +121,7 @@ def test_inspect_providers_binds_collector_to_staging_identity(
     assert evidence.reviewed_sha == REVIEWED_SHA
     assert calls == [
         (
-            {"release": {"version": "0.2.2"}},
+            {"release": {"version": "0.3.0"}},
             {"SAFE": "value"},
             REVIEWED_SHA,
             REVIEWED_SHA,
@@ -145,7 +145,7 @@ def test_database_url_requires_verify_full_without_echoing_password() -> None:
 def test_supabase_inspection_starts_read_only_and_requires_exact_inventory() -> None:
     tables = [f"table_{index:02d}" for index in range(17)]
     definitions = {
-        f"public.function_{index}()": f"definition:public.function_{index}()" for index in range(10)
+        f"public.function_{index}()": f"definition:public.function_{index}()" for index in range(11)
     }
     functions = {
         name: hashlib.sha256(definition.encode()).hexdigest()
@@ -164,9 +164,9 @@ def test_supabase_inspection_starts_read_only_and_requires_exact_inventory() -> 
             if "pg_catalog.pg_tables" in self.last:
                 return [(name,) for name in tables]
             if "pg_get_functiondef" in self.last:
-                return list(definitions.items())
+                return sorted(definitions.items())
             if "schema_migrations" in self.last:
-                return [("20260716100000",)]
+                return [("20260719120000",)]
             if "erp_action_validation_knowledge" in self.last:
                 return [(254,)]
             raise AssertionError(self.last)
@@ -181,18 +181,18 @@ def test_supabase_inspection_starts_read_only_and_requires_exact_inventory() -> 
         Connection(),
         expected_tables=tables,
         expected_functions=functions,
-        expected_migration_id="20260716100000",
+        expected_migration_id="20260719120000",
     )
 
     assert calls[0][0] == "BEGIN READ ONLY"
     assert observed["table_count"] == 17
-    assert observed["function_count"] == 10
+    assert observed["function_count"] == 11
     assert observed["rag_identity_count"] == 254
 
 
 def test_supabase_inspection_rejects_function_definition_hash_drift() -> None:
     tables = [f"table_{index:02d}" for index in range(17)]
-    functions = {f"public.function_{index}()": "0" * 64 for index in range(10)}
+    functions = {f"public.function_{index}()": "0" * 64 for index in range(11)}
 
     class Cursor:
         last = ""
@@ -204,7 +204,7 @@ def test_supabase_inspection_rejects_function_definition_hash_drift() -> None:
             if "pg_catalog.pg_tables" in self.last:
                 return [(name,) for name in tables]
             if "pg_get_functiondef" in self.last:
-                return [(name, f"drifted:{name}") for name in functions]
+                return [(name, f"drifted:{name}") for name in sorted(functions)]
             raise AssertionError(self.last)
 
     class Connection:
@@ -218,5 +218,5 @@ def test_supabase_inspection_rejects_function_definition_hash_drift() -> None:
             Connection(),
             expected_tables=tables,
             expected_functions=functions,
-            expected_migration_id="20260716100000",
+            expected_migration_id="20260719120000",
         )

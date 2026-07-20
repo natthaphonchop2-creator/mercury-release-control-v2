@@ -1,4 +1,4 @@
-"""Fail-closed provider evidence validation for Mercury v0.2.2."""
+"""Fail-closed provider evidence validation for Mercury v0.3.0."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ class ProviderEvidence(_EvidenceModel):
     render: RenderEvidence
     reviewed_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
     supabase: SupabaseEvidence
-    version: str = Field(pattern=r"^0\.2\.2$")
+    version: str = Field(pattern=r"^0\.3\.0$")
 
 
 class ProviderCollector(Protocol):
@@ -93,7 +93,7 @@ def inspect_providers(
     ):
         raise InspectionError("staging_identity_mismatch")
     release = policy.get("release")
-    if not isinstance(release, dict) or release.get("version") != "0.2.2":
+    if not isinstance(release, dict) or release.get("version") != "0.3.0":
         raise InspectionError("provider_policy_invalid")
     if collector is None:
         from mercury_release_control.hosted_collector import HostedProviderCollector
@@ -110,7 +110,7 @@ def inspect_providers(
         raise
     except Exception as exc:
         raise InspectionError("provider_collection_failed") from exc
-    return inspect_provider_state(state, reviewed_sha=reviewed_sha, version="0.2.2")
+    return inspect_provider_state(state, reviewed_sha=reviewed_sha, version="0.3.0")
 
 
 def inspect_provider_state(
@@ -121,7 +121,7 @@ def inspect_provider_state(
 ) -> ProviderEvidence:
     if _SHA.fullmatch(reviewed_sha) is None:
         raise InspectionError("reviewed_sha_invalid")
-    if version != "0.2.2" or set(state) != {
+    if version != "0.3.0" or set(state) != {
         "flowaccount",
         "public_mcp",
         "render",
@@ -135,7 +135,7 @@ def inspect_provider_state(
         raise InspectionError("render_version_mismatch")
     if render.get("status") != "live" or render.get("logs_scanned") is not True:
         raise InspectionError("render_deployment_invalid")
-    if render.get("hosted_tool_count") != 20:
+    if render.get("hosted_tool_count") != 24:
         raise InspectionError("render_tool_inventory_invalid")
     if render.get("catalog_action_count") != 254:
         raise InspectionError("render_catalog_inventory_invalid")
@@ -145,7 +145,7 @@ def inspect_provider_state(
         raise InspectionError("supabase_read_only_invalid")
     if supabase.get("table_count") != 17:
         raise InspectionError("supabase_table_inventory_invalid")
-    if supabase.get("function_count") != 10:
+    if supabase.get("function_count") != 11:
         raise InspectionError("supabase_function_inventory_invalid")
     if supabase.get("rag_identity_count") != 254:
         raise InspectionError("supabase_rag_inventory_invalid")
@@ -168,7 +168,7 @@ def inspect_provider_state(
     public_mcp = _dictionary(state, "public_mcp")
     if public_mcp.get("status") != 200:
         raise InspectionError("public_mcp_unavailable")
-    if public_mcp.get("hosted_tool_count") != 20:
+    if public_mcp.get("hosted_tool_count") != 24:
         raise InspectionError("public_mcp_tool_inventory_invalid")
     if public_mcp.get("catalog_action_count") != 254:
         raise InspectionError("public_mcp_catalog_inventory_invalid")
@@ -235,7 +235,7 @@ def inspect_supabase_connection(
     expected_functions: Mapping[str, str],
     expected_migration_id: str,
 ) -> dict[str, object]:
-    if len(expected_tables) != 17 or len(expected_functions) != 10:
+    if len(expected_tables) != 17 or len(expected_functions) != 11:
         raise InspectionError("supabase_policy_invalid")
     if getattr(getattr(connection, "info", None), "ssl_in_use", None) is not True:
         raise InspectionError("database_tls_invalid")

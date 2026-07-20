@@ -25,7 +25,7 @@ class _AttestationModel(BaseModel):
 
 class StagingReceipt(_AttestationModel):
     commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
-    ref: str = Field(pattern=r"^v0\.2\.2-rc\.[0-9a-f]{12}$")
+    ref: str = Field(pattern=r"^v0\.3\.0-rc\.[0-9a-f]{12}$")
     repository: Literal["natthaphonchop2-creator/mercury-tools-staging"]
     tag_object_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
 
@@ -63,7 +63,7 @@ class TrustedAttestationV2(_AttestationModel):
     surface_evidence_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     surface_count: Literal[8]
     surfaces: tuple[SurfaceReceipt, ...] = Field(min_length=8, max_length=8)
-    version: Literal["0.2.2"]
+    version: Literal["0.3.0"]
     workflow: WorkflowReceipt
 
 
@@ -101,7 +101,7 @@ def assemble_attestation(
         "surface_count": len(surfaces),
         "surface_evidence_sha256": surface_digest,
         "surfaces": surfaces,
-        "version": "0.2.2",
+        "version": "0.3.0",
         "workflow": WorkflowReceipt(
             attempt=run_attempt,
             control_commit=control_commit,
@@ -116,10 +116,10 @@ def assemble_attestation(
 def validate_attestation(attestation: TrustedAttestationV2, *, now: datetime) -> None:
     observed_at = _utc(now)
     if (
-        attestation.version != "0.2.2"
+        attestation.version != "0.3.0"
         or attestation.schema_version != 2
         or attestation.reviewed_sha != attestation.provider_evidence.reviewed_sha
-        or attestation.staging.ref != f"v0.2.2-rc.{attestation.reviewed_sha[:12]}"
+        or attestation.staging.ref != f"v0.3.0-rc.{attestation.reviewed_sha[:12]}"
         or tuple(item.surface for item in attestation.surfaces) != _SURFACE_NAMES
         or any(item.completed_at > attestation.issued_at for item in attestation.surfaces)
     ):
