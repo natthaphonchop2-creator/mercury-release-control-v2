@@ -100,37 +100,15 @@ jobs:
 
 
 def _candidate_files(marker: Path | None = None) -> dict[str, bytes]:
-    payload = b"VALUE = 1\n"
-    if marker is not None:
-        payload = f"from pathlib import Path\nPath({str(marker)!r}).touch()\n".encode()
     files = {
-        ".github/workflows/attest-v0.2.2.yml": _release_workflow(action="attest", version="0.2.2"),
-        ".github/workflows/attest-v0.3.0.yml": _release_workflow(action="attest", version="0.3.0"),
-        ".github/workflows/ci.yml": _ci_workflow(),
-        ".github/workflows/guardian.yml": _guardian_workflow(),
-        ".github/workflows/migrate-v0.3.0.yml": MIGRATION_WORKFLOW.read_bytes(),
-        ".github/workflows/publish-v0.2.2.yml": _release_workflow(
-            action="publish", version="0.2.2"
-        ),
-        ".github/workflows/publish-v0.3.0.yml": _release_workflow(
-            action="publish", version="0.3.0"
-        ),
-        ".gitignore": b".venv/\n",
-        "LICENSE": b"MIT\n",
-        "README.md": b"Mercury release control\n",
-        "policy-v0.2.2.json": POLICY_V022.read_bytes(),
-        "policy-v0.3.0.json": POLICY_V030.read_bytes(),
-        "pyproject.toml": b"[project]\nname='mercury-release-control'\nversion='0.3.0'\n",
-        "src/mercury_release_control/__init__.py": b"__version__ = '0.3.0'\n",
-        "src/mercury_release_control/guardian.py": (
-            ROOT / "src/mercury_release_control/guardian.py"
-        ).read_bytes(),
-        "src/mercury_release_control/production_migration.py": b"VALUE = 1\n",
-        "src/mercury_release_control/release_profile.py": b"PROFILES = ('0.2.2', '0.3.0')\n",
-        "src/untrusted_candidate.py": payload,
-        "uv.lock": b"version = 1\n",
+        path: (ROOT / path).read_bytes()
+        for path in guardian.V030_ALLOWED_FILES
+        if path != guardian.MANIFEST_PATH
     }
-    files.update({path: (ROOT / path).read_bytes() for path in TRUSTED_V030_PATHS})
+    if marker is not None:
+        files["release-notes-v0.3.0.md"] = (
+            f"from pathlib import Path\nPath({str(marker)!r}).touch()\n".encode()
+        )
     files["control-manifest.json"] = json.dumps(
         build_manifest_payload(files),
         separators=(",", ":"),
@@ -194,6 +172,25 @@ def test_guardian_upgrade_remains_compatible_with_v022_only_candidate() -> None:
     receipt = verify_candidate_archive(_archive(_v022_candidate_files()))
 
     assert receipt.status == "passed"
+
+
+def test_guardian_v030_candidate_uses_exact_approved_path_inventory() -> None:
+    assert set(_candidate_files()) == set(guardian.V030_ALLOWED_FILES)
+
+
+def test_guardian_rejects_unapproved_additive_path() -> None:
+    files = _candidate_files()
+    files["json.py"] = b"raise RuntimeError('unexpected import')\n"
+    files["control-manifest.json"] = json.dumps(
+        build_manifest_payload(
+            {key: value for key, value in files.items() if key != "control-manifest.json"}
+        ),
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+
+    with pytest.raises(GuardianError, match="^candidate_inventory_invalid$"):
+        verify_candidate_archive(_archive(files))
 
 
 def test_guardian_rejects_partial_v030_candidate() -> None:
@@ -397,7 +394,7 @@ def test_guardian_rejects_literal_secret_assignment() -> None:
 
 def test_guardian_allows_secret_variable_reads() -> None:
     files = _candidate_files()
-    files["src/unpinned_helper.py"] = (
+    files["release-notes-v0.3.0.md"] = (
         b'\nclient_secret = environment["CLIENT_SECRET"]\n'
     )
     files["control-manifest.json"] = json.dumps(

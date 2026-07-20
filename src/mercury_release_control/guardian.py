@@ -262,6 +262,64 @@ V030_EXPECTED_POLICY: Mapping[str, object] = json.loads(
 }
 """
 )
+V030_ALLOWED_FILES = frozenset(
+    {
+        ".github/workflows/attest-v0.2.2.yml",
+        ".github/workflows/attest-v0.3.0.yml",
+        ".github/workflows/ci.yml",
+        ".github/workflows/guardian.yml",
+        ".github/workflows/migrate-v0.3.0.yml",
+        ".github/workflows/publish-v0.2.2.yml",
+        ".github/workflows/publish-v0.3.0.yml",
+        ".gitignore",
+        "LICENSE",
+        "README.md",
+        MANIFEST_PATH,
+        "policy-v0.2.2.json",
+        "policy-v0.3.0.json",
+        "pyproject.toml",
+        "release-notes-v0.2.2.md",
+        "release-notes-v0.3.0.md",
+        "src/mercury_release_control/__init__.py",
+        "src/mercury_release_control/attestation.py",
+        "src/mercury_release_control/github_preflight.py",
+        "src/mercury_release_control/github_publication.py",
+        "src/mercury_release_control/guardian.py",
+        "src/mercury_release_control/handoff.py",
+        "src/mercury_release_control/hosted_collector.py",
+        "src/mercury_release_control/preflight.py",
+        "src/mercury_release_control/production_migration.py",
+        "src/mercury_release_control/provider_inspector.py",
+        "src/mercury_release_control/public_tree.py",
+        "src/mercury_release_control/publication.py",
+        "src/mercury_release_control/publish_workflow.py",
+        "src/mercury_release_control/release_profile.py",
+        "src/mercury_release_control/staging.py",
+        "src/mercury_release_control/surface_inspector.py",
+        "src/mercury_release_control/workflow.py",
+        "tests/fixtures/public-tree-v1.json",
+        "tests/test_attest_workflow.py",
+        "tests/test_attestation.py",
+        "tests/test_github_preflight.py",
+        "tests/test_guardian.py",
+        "tests/test_handoff.py",
+        "tests/test_hosted_collector.py",
+        "tests/test_migration_workflow.py",
+        "tests/test_preflight.py",
+        "tests/test_production_migration.py",
+        "tests/test_provider_inspector.py",
+        "tests/test_public_tree.py",
+        "tests/test_publication.py",
+        "tests/test_publish_workflow.py",
+        "tests/test_publish_workflow_structure.py",
+        "tests/test_staging.py",
+        "tests/test_surface_inspector.py",
+        "tests/test_v022_compatibility.py",
+        "tests/test_v030_controls.py",
+        "tests/test_workflow.py",
+        "uv.lock",
+    }
+)
 BASE_REQUIRED_FILES = frozenset(
     {
         ".github/workflows/ci.yml",
@@ -286,7 +344,7 @@ V030_MARKER_FILES = frozenset(
         "src/mercury_release_control/production_migration.py",
     }
 )
-REQUIRED_FILES = BASE_REQUIRED_FILES | V030_MARKER_FILES | set(V030_TRUSTED_FILE_SHA256)
+REQUIRED_FILES = V030_ALLOWED_FILES
 _ACTION_PIN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
@@ -327,12 +385,13 @@ def build_manifest_payload(files: Mapping[str, bytes]) -> dict[str, object]:
 
 def verify_candidate_archive(archive_bytes: bytes) -> GuardianReceipt:
     files = _read_candidate_archive(archive_bytes)
-    v030_present = bool(V030_MARKER_FILES.intersection(files))
-    required_files = REQUIRED_FILES if v030_present else BASE_REQUIRED_FILES
-    if not required_files.issubset(files):
-        raise GuardianError("candidate_inventory_invalid")
     _reject_forbidden_paths(files)
     _reject_secret_assignments(files)
+    v030_present = bool(V030_MARKER_FILES.intersection(files))
+    if v030_present and set(files) != V030_ALLOWED_FILES:
+        raise GuardianError("candidate_inventory_invalid")
+    if not v030_present and not BASE_REQUIRED_FILES.issubset(files):
+        raise GuardianError("candidate_inventory_invalid")
     manifest = _strict_json(files[MANIFEST_PATH], "candidate_manifest_invalid")
     if set(manifest) != {"files", "schema_version"} or manifest.get("schema_version") != 1:
         raise GuardianError("candidate_manifest_invalid")
