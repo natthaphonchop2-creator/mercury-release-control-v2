@@ -58,7 +58,13 @@ def _write_inputs(tmp_path):
     handoff.write_text(json.dumps(_payload(), sort_keys=True), encoding="utf-8")
     policy = tmp_path / "policy.json"
     policy.write_text(
-        json.dumps({"repository_id": 42, "reviewed_repository_id": 84}),
+        json.dumps(
+            {
+                "release": {"tag": "v0.3.0", "version": "0.3.0"},
+                "repository_id": 42,
+                "reviewed_repository_id": 84,
+            }
+        ),
         encoding="utf-8",
     )
     return handoff, policy

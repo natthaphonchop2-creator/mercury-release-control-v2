@@ -147,6 +147,13 @@ def test_publication_state_machine_rejects_skip_and_reverse() -> None:
         require_transition(PublicationState.DRAFT_VERIFIED, PublicationState.TAG_CREATED)
 
 
+def test_publication_plan_rejects_cross_version_handoff_identity() -> None:
+    handoff = _handoff().model_copy(update={"version": "0.2.2"})
+
+    with pytest.raises(PublicationError, match="^publication_plan_invalid$"):
+        publication_plan(handoff, release_notes="Mercury v0.2.2")
+
+
 def test_publication_checks_all_assets_before_first_tag_api_call() -> None:
     plan = publication_plan(_handoff(), release_notes="Mercury v0.3.0")
     backend = FakeBackend()

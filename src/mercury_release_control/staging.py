@@ -22,6 +22,11 @@ from typing import Any, Protocol
 from pydantic import SecretStr
 
 from mercury_release_control.public_tree import PublicTreeError, build_public_tree
+from mercury_release_control.release_profile import (
+    ReleaseProfileError,
+    release_profile,
+    release_profile_from_staging_ref,
+)
 
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -206,7 +211,15 @@ class GitHubRestApi:
         self._api_url = api_url
 
     def read_staging(self, repository: str, tag: str) -> ExistingStaging | None:
-        if _REPOSITORY.fullmatch(repository) is None or not tag.startswith("v0.3.0-rc."):
+        try:
+            profile = release_profile_from_staging_ref(tag)
+        except ReleaseProfileError as exc:
+            raise StagingError("staging_repository_invalid") from exc
+        suffix = tag.removeprefix(profile.staging_tag_prefix)
+        if (
+            _REPOSITORY.fullmatch(repository) is None
+            or re.fullmatch(r"[0-9a-f]{12}", suffix) is None
+        ):
             raise StagingError("staging_repository_invalid")
         encoded_tag = urllib.parse.quote(tag, safe="")
         reference = self._request("GET", f"/repos/{repository}/git/ref/tags/{encoded_tag}")
@@ -315,7 +328,12 @@ def build_staging(
     archive_bytes: bytes,
     reviewed_sha: str,
     output: Path,
+    version: str,
 ) -> StagingIdentity:
+    try:
+        profile = release_profile(version)
+    except ReleaseProfileError as exc:
+        raise StagingError("staging_release_invalid") from exc
     if _SHA.fullmatch(reviewed_sha) is None:
         raise StagingError("staging_reviewed_sha_invalid")
     if output.exists() or output.is_symlink():
@@ -344,7 +362,7 @@ def build_staging(
         environment = _git_environment(empty_template, isolated_home)
         _run_git(repository, environment, "init", "--initial-branch=main")
         _run_git(repository, environment, "add", "--all")
-        tag = f"v0.3.0-rc.{reviewed_sha[:12]}"
+        tag = profile.staging_ref(reviewed_sha)
         _run_git(
             repository,
             environment,

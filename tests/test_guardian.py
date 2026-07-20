@@ -14,7 +14,9 @@ from mercury_release_control.guardian import (
 )
 
 CHECKOUT_PIN = "34e114876b0b11c390a56381ad16ebd13914f8d5"
-POLICY = Path(__file__).resolve().parents[1] / "policy-v0.3.0.json"
+ROOT = Path(__file__).resolve().parents[1]
+POLICY_V022 = ROOT / "policy-v0.2.2.json"
+POLICY_V030 = ROOT / "policy-v0.3.0.json"
 
 
 def _ci_workflow() -> bytes:
@@ -49,20 +51,49 @@ jobs:
 """.encode()
 
 
+def _release_workflow(*, action: str, version: str) -> bytes:
+    actions_permission = "write" if action == "attest" else "read"
+    return f"""name: Mercury v{version} {action}
+on: workflow_dispatch
+permissions:
+  actions: {actions_permission}
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: 'true'
+""".encode()
+
+
 def _candidate_files(marker: Path | None = None) -> dict[str, bytes]:
     payload = b"VALUE = 1\n"
     if marker is not None:
         payload = f"from pathlib import Path\nPath({str(marker)!r}).touch()\n".encode()
     files = {
+        ".github/workflows/attest-v0.2.2.yml": _release_workflow(
+            action="attest", version="0.2.2"
+        ),
+        ".github/workflows/attest-v0.3.0.yml": _release_workflow(
+            action="attest", version="0.3.0"
+        ),
         ".github/workflows/ci.yml": _ci_workflow(),
         ".github/workflows/guardian.yml": _guardian_workflow(),
+        ".github/workflows/publish-v0.2.2.yml": _release_workflow(
+            action="publish", version="0.2.2"
+        ),
+        ".github/workflows/publish-v0.3.0.yml": _release_workflow(
+            action="publish", version="0.3.0"
+        ),
         ".gitignore": b".venv/\n",
         "LICENSE": b"MIT\n",
         "README.md": b"Mercury release control\n",
-        "policy-v0.3.0.json": POLICY.read_bytes(),
+        "policy-v0.2.2.json": POLICY_V022.read_bytes(),
+        "policy-v0.3.0.json": POLICY_V030.read_bytes(),
         "pyproject.toml": b"[project]\nname='mercury-release-control'\nversion='0.3.0'\n",
         "src/mercury_release_control/__init__.py": b"__version__ = '0.3.0'\n",
         "src/mercury_release_control/guardian.py": payload,
+        "src/mercury_release_control/release_profile.py": b"PROFILES = ('0.2.2', '0.3.0')\n",
         "uv.lock": b"version = 1\n",
     }
     files["control-manifest.json"] = json.dumps(
@@ -99,7 +130,7 @@ def test_guardian_reads_candidate_as_data_without_execution(tmp_path: Path) -> N
     receipt = verify_candidate_archive(_archive(_candidate_files(marker)))
 
     assert receipt.status == "passed"
-    assert receipt.file_count == 11
+    assert receipt.file_count == 17
     assert not marker.exists()
 
 

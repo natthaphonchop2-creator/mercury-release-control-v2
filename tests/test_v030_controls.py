@@ -5,10 +5,12 @@ import json
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 from mercury_release_control import guardian
 from mercury_release_control.provider_inspector import inspect_provider_state
+from mercury_release_control.surface_inspector import InspectionError, validate_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "policy-v0.3.0.json"
@@ -93,6 +95,27 @@ def test_v030_policy_preserves_exact_trust_and_provider_bindings() -> None:
         "supabase_function_count": 11,
         "supabase_table_count": 17,
     }
+
+
+def test_committed_v030_policy_remains_fail_closed_without_runtime_mutation() -> None:
+    policy = _json(POLICY_PATH)
+    original = json.loads(json.dumps(policy))
+
+    with pytest.raises(InspectionError, match="^policy_unconfigured$"):
+        validate_policy(policy)
+
+    assert policy == original
+    assert policy["bootstrap_state"] == "pending-github-configuration"
+
+
+def test_committed_policies_pin_the_version_isolated_shared_inspector() -> None:
+    inspector_digest = hashlib.sha256(
+        (ROOT / "src/mercury_release_control/surface_inspector.py").read_bytes()
+    ).hexdigest()
+
+    for version in ("0.2.2", "0.3.0"):
+        policy = _json(ROOT / f"policy-v{version}.json")
+        assert policy["inspector"]["sha256"] == inspector_digest
 
 
 def test_v030_provider_state_is_exact_and_fail_closed() -> None:

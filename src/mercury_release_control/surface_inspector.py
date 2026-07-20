@@ -38,6 +38,11 @@ from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO
 
 from mercury_release_control.public_tree import PublicTreeError, build_public_tree
+from mercury_release_control.release_profile import (
+    ReleaseProfile,
+    ReleaseProfileError,
+    release_profile_from_policy,
+)
 
 UTC = datetime_module.timezone.utc  # noqa: UP017 - entrypoint also supports system Python 3.9.
 
@@ -99,22 +104,6 @@ _CANONICAL_TABLES = (
     "mercury_workspace_skills",
     "mercury_workspaces",
 )
-_REQUIRED_FUNCTIONS = (
-    "public.jsonb_has_forbidden_validation_key(jsonb)",
-    "public.jsonb_has_forbidden_validation_value(jsonb)",
-    "public.jsonb_is_safe_validation_response_shape(jsonb)",
-    (
-        "public.match_knowledge_chunks("
-        "text,vector,integer,text,text,text,text,text,date,text,text,text,text,text)"
-    ),
-    "public.mercury_capability_states_are_safe(jsonb)",
-    "public.reject_validation_evidence_mutation()",
-    "public.resolve_erp_action_validation_batch(jsonb,timestamp with time zone)",
-    "public.validation_label_kind(text)",
-    "public.validation_text_has_forbidden_value(text)",
-    "public.validation_text_has_label_assignment_contamination(text)",
-    "public.validation_text_has_safe_label_assignment(text)",
-)
 _POLICY_KEYS = {
     "bootstrap_state",
     "branch",
@@ -153,7 +142,6 @@ _REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _PROJECT_RE = re.compile(r"^[a-z0-9]{20}$")
-_STAGING_REF_RE = re.compile(r"^v0\.3\.0-rc\.[0-9a-f]{12}$")
 _ENV_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,127}$")
 _SERVICE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _RENDER_OWNER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
@@ -426,20 +414,24 @@ def _validate_names(value: object, code: str) -> tuple[str, ...]:
     return names
 
 
-def _validate_release_tag_ruleset(value: object) -> None:
+def _validate_release_tag_ruleset(value: object, profile: ReleaseProfile) -> None:
     ruleset = _require_mapping(value, "policy_release_tag_ruleset_invalid")
     _require_exact_keys(
         ruleset,
         {"bypass_actors", "conditions", "enforcement", "name", "rules", "target"},
         "policy_release_tag_ruleset_invalid",
     )
-    if ruleset.get("target") != "tag" or ruleset.get("enforcement") != "active":
+    if (
+        ruleset.get("target") != "tag"
+        or ruleset.get("enforcement") != "active"
+        or ruleset.get("name") != profile.ruleset_name
+    ):
         raise InspectionError("policy_release_tag_ruleset_invalid")
     conditions = _require_mapping(ruleset.get("conditions"), "policy_release_tag_ruleset_invalid")
     _require_exact_keys(conditions, {"ref_name"}, "policy_release_tag_ruleset_invalid")
     ref_name = _require_mapping(conditions.get("ref_name"), "policy_release_tag_ruleset_invalid")
     _require_exact_keys(ref_name, {"exclude", "include"}, "policy_release_tag_ruleset_invalid")
-    if ref_name.get("include") != ["refs/tags/v0.3.0"] or ref_name.get("exclude") != []:
+    if ref_name.get("include") != [f"refs/tags/{profile.tag}"] or ref_name.get("exclude") != []:
         raise InspectionError("policy_release_tag_ruleset_invalid")
     rules = ruleset.get("rules")
     if not isinstance(rules, list) or len(rules) != 2:
@@ -480,20 +472,18 @@ def validate_policy(policy: Mapping[str, object]) -> Mapping[str, object]:
         raise InspectionError("policy_repository_identity_invalid")
     if policy.get("branch") != "main" or policy.get("environment") != "production-release":
         raise InspectionError("policy_release_boundary_invalid")
-    if policy.get("release") != {"tag": "v0.3.0", "version": "0.3.0"}:
+    try:
+        profile = release_profile_from_policy(policy)
+    except ReleaseProfileError as exc:
+        raise InspectionError("policy_release_boundary_invalid") from exc
+    if policy.get("release") != {"tag": profile.tag, "version": profile.version}:
         raise InspectionError("policy_release_boundary_invalid")
     if policy.get("staging") != {
         "repository": policy.get("staging_repository"),
-        "tag_prefix": "v0.3.0-rc.",
+        "tag_prefix": profile.staging_tag_prefix,
     }:
         raise InspectionError("policy_staging_invalid")
-    if policy.get("provider_expectations") != {
-        "flowaccount_environment": "sandbox",
-        "hosted_tool_count": 24,
-        "catalog_action_count": 254,
-        "supabase_table_count": 17,
-        "supabase_function_count": 11,
-    }:
+    if policy.get("provider_expectations") != profile.provider_expectations():
         raise InspectionError("policy_provider_expectations_invalid")
     inspector = _require_mapping(policy.get("inspector"), "policy_inspector_invalid")
     _require_exact_keys(inspector, _POLICY_INSPECTOR_KEYS, "policy_inspector_invalid")
@@ -505,7 +495,7 @@ def validate_policy(policy: Mapping[str, object]) -> Mapping[str, object]:
         raise InspectionError("policy_inspector_invalid")
     if policy.get("immutable_releases_required") is not True:
         raise InspectionError("policy_immutable_releases_invalid")
-    _validate_release_tag_ruleset(policy.get("release_tag_ruleset"))
+    _validate_release_tag_ruleset(policy.get("release_tag_ruleset"), profile)
     reviewers = policy.get("required_reviewer_ids")
     if (
         not isinstance(reviewers, list)
@@ -555,7 +545,7 @@ def validate_policy(policy: Mapping[str, object]) -> Mapping[str, object]:
     project_ref = supabase.get("project_ref")
     if not isinstance(project_ref, str) or _PROJECT_RE.fullmatch(project_ref) is None:
         raise InspectionError("supabase_project_ref_invalid")
-    if supabase.get("migration_id") != "20260719120000":
+    if supabase.get("migration_id") != profile.migration_id:
         raise InspectionError("supabase_migration_invalid")
     _require_sha(supabase.get("migration_history_sha256"), "supabase_migration_history_invalid")
     if tuple(supabase.get("tables", ())) != _CANONICAL_TABLES:
@@ -566,7 +556,7 @@ def validate_policy(policy: Mapping[str, object]) -> Mapping[str, object]:
     if (
         not isinstance(functions, list)
         or tuple(item.get("signature") if isinstance(item, Mapping) else None for item in functions)
-        != _REQUIRED_FUNCTIONS
+        != profile.supabase_function_signatures
     ):
         raise InspectionError("supabase_function_inventory_invalid")
     for item in functions:
@@ -2303,11 +2293,12 @@ def _render_status_endpoint(
     *,
     base_url: str,
     reviewed_sha: str,
+    version: str,
 ) -> str:
     endpoint = status_payload.get("mcp_endpoint")
     if (
         status_payload.get("status") != "ok"
-        or status_payload.get("version") != "0.3.0"
+        or status_payload.get("version") != version
         or status_payload.get("deployment_commit") != reviewed_sha
         or not isinstance(endpoint, str)
         or not endpoint.startswith(base_url + "/")
@@ -2343,6 +2334,7 @@ def _inspect_render_and_public_mcp(
     trufflehog: Path,
     allowlist: frozenset[tuple[str, str, str]],
     budget: InspectionBudget,
+    profile: ReleaseProfile,
 ) -> tuple[Mapping[str, object], list[str], list[str]]:
     base_url = environment["MERCURY_PUBLIC_MCP_URL"].rstrip("/")
     render_base = environment["RENDER_API_URL"].rstrip("/")
@@ -2393,6 +2385,7 @@ def _inspect_render_and_public_mcp(
         status_payload,
         base_url=base_url,
         reviewed_sha=reviewed_sha,
+        version=profile.version,
     )
     initialized, initialize_response = _mcp_call(
         endpoint,
@@ -2448,7 +2441,7 @@ def _inspect_render_and_public_mcp(
         cursor = next_cursor
     else:
         raise InspectionError("public_mcp_tool_inventory_invalid")
-    if len(tool_rows) != 24:
+    if len(tool_rows) != profile.hosted_tool_count:
         raise InspectionError("public_mcp_tool_inventory_invalid")
     tool_names = []
     for row in tool_rows:
@@ -2458,7 +2451,7 @@ def _inspect_render_and_public_mcp(
             raise InspectionError("public_mcp_tool_inventory_invalid")
         _assert_sanitized(tool.get("inputSchema"))
         tool_names.append(name)
-    if len(set(tool_names)) != 24:
+    if set(tool_names) != profile.hosted_tool_names:
         raise InspectionError("public_mcp_tool_inventory_invalid")
     samples: list[HttpResponse] = []
     sample_requests: list[tuple[int, str, str, Mapping[str, object], str]] = []
@@ -2558,8 +2551,8 @@ def _inspect_render_and_public_mcp(
     return (
         {
             "deployment_commit": status_payload["deployment_commit"],
-            "version": "0.3.0",
-            "hosted_tool_count": 24,
+            "version": profile.version,
+            "hosted_tool_count": profile.hosted_tool_count,
             "evidence_sha256": _canonical_sha256(
                 {"render": render_hashes, "tools": sorted(tool_names)}
             ),
@@ -2633,6 +2626,10 @@ def inspect_database(
 ) -> tuple[Mapping[str, object], Mapping[str, object]]:
     """Inspect only through PostgreSQL after TLS and identity checks pass."""
 
+    try:
+        profile = release_profile_from_policy(policy)
+    except ReleaseProfileError as exc:
+        raise InspectionError("supabase_policy_invalid") from exc
     supabase = _require_mapping(policy["supabase"], "supabase_policy_invalid")
     project_ref = supabase["project_ref"]
     assert isinstance(project_ref, str)
@@ -2691,7 +2688,7 @@ def inspect_database(
         if any(not isinstance(item, str) for item in buckets):
             raise InspectionError("database_bucket_inventory_invalid")
         functions: list[dict[str, str]] = []
-        for signature in _REQUIRED_FUNCTIONS:
+        for signature in profile.supabase_function_signatures:
             cursor.execute("SELECT pg_get_functiondef(to_regprocedure(%s))", (signature,))
             row = cursor.fetchone()
             if not isinstance(row, tuple) or len(row) != 1 or not isinstance(row[0], str):
@@ -2735,7 +2732,7 @@ def inspect_database(
         observed: dict[str, object] = {
             "project_ref": project_ref,
             "project_ref_sha256": _sha256_bytes(project_ref.encode("utf-8")),
-            "migration_id": "20260719120000",
+            "migration_id": profile.migration_id,
             "migration_history_sha256": migration_digest,
             "tables": list(tables),
             "storage_buckets": list(buckets),
@@ -2907,11 +2904,15 @@ def inspect(
 
     if _SHA_RE.fullmatch(reviewed_sha) is None:
         raise InspectionError("reviewed_sha_invalid")
-    if _STAGING_REF_RE.fullmatch(staging_ref) is None:
-        raise InspectionError("staging_ref_invalid")
     policy = validate_policy(
         load_strict_json(policy_path, maximum=MAX_POLICY_BYTES, code="policy_invalid")
     )
+    try:
+        profile = release_profile_from_policy(policy)
+    except ReleaseProfileError as exc:
+        raise InspectionError("policy_release_boundary_invalid") from exc
+    if staging_ref != profile.staging_ref(reviewed_sha):
+        raise InspectionError("staging_ref_invalid")
     manifest_data = _read_regular_bytes(
         manifest_path, maximum=MAX_UNTRUSTED_JSON_BYTES, code="manifest_invalid"
     )
@@ -2990,6 +2991,7 @@ def inspect(
             trufflehog=trufflehog,
             allowlist=allowlist_keys,
             budget=budget,
+            profile=profile,
         )
         supabase, flowaccount = inspect_database(
             policy=policy,

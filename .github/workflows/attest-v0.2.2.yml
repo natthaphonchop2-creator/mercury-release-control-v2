@@ -149,6 +149,7 @@ jobs:
             --control-commit "$GITHUB_SHA" \
             --identity "$RUNNER_TEMP/mercury-release/staging.json" \
             --output "$OUTPUT" \
+            --policy policy-v0.2.2.json \
             --preflight "$RUNNER_TEMP/mercury-release/preflight.json" \
             --providers "$RUNNER_TEMP/mercury-release/provider-evidence.json" \
             --run-attempt "$GITHUB_RUN_ATTEMPT" \

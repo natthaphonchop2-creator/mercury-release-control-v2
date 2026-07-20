@@ -12,6 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from mercury_release_control.preflight import PreflightReceipt
 from mercury_release_control.provider_inspector import ProviderEvidence
+from mercury_release_control.release_profile import (
+    SUPPORTED_STAGING_REF_PATTERN,
+    SUPPORTED_VERSION_PATTERN,
+    ReleaseProfileError,
+    release_profile,
+)
 from mercury_release_control.staging import ExistingStaging
 
 
@@ -25,7 +31,7 @@ class _AttestationModel(BaseModel):
 
 class StagingReceipt(_AttestationModel):
     commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
-    ref: str = Field(pattern=r"^v0\.3\.0-rc\.[0-9a-f]{12}$")
+    ref: str = Field(pattern=SUPPORTED_STAGING_REF_PATTERN)
     repository: Literal["natthaphonchop2-creator/mercury-tools-staging"]
     tag_object_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
 
@@ -63,7 +69,7 @@ class TrustedAttestationV2(_AttestationModel):
     surface_evidence_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     surface_count: Literal[8]
     surfaces: tuple[SurfaceReceipt, ...] = Field(min_length=8, max_length=8)
-    version: Literal["0.3.0"]
+    version: str = Field(pattern=SUPPORTED_VERSION_PATTERN)
     workflow: WorkflowReceipt
 
 
@@ -77,9 +83,18 @@ def assemble_attestation(
     run_id: int,
     run_attempt: int,
     now: datetime,
+    version: str,
 ) -> TrustedAttestationV2:
     issued_at = _utc(now)
-    if evidence.reviewed_sha != staging.reviewed_sha:
+    try:
+        profile = release_profile(version)
+    except ReleaseProfileError as exc:
+        raise AttestationError("attestation_identity_mismatch") from exc
+    if (
+        evidence.reviewed_sha != staging.reviewed_sha
+        or evidence.version != profile.version
+        or staging.tag != profile.staging_ref(evidence.reviewed_sha)
+    ):
         raise AttestationError("attestation_identity_mismatch")
     if surface_evidence.get("reviewed_commit_sha") != evidence.reviewed_sha:
         raise AttestationError("attestation_identity_mismatch")
@@ -101,7 +116,7 @@ def assemble_attestation(
         "surface_count": len(surfaces),
         "surface_evidence_sha256": surface_digest,
         "surfaces": surfaces,
-        "version": "0.3.0",
+        "version": profile.version,
         "workflow": WorkflowReceipt(
             attempt=run_attempt,
             control_commit=control_commit,
@@ -115,11 +130,15 @@ def assemble_attestation(
 
 def validate_attestation(attestation: TrustedAttestationV2, *, now: datetime) -> None:
     observed_at = _utc(now)
+    try:
+        profile = release_profile(attestation.version)
+    except ReleaseProfileError as exc:
+        raise AttestationError("attestation_identity_mismatch") from exc
     if (
-        attestation.version != "0.3.0"
-        or attestation.schema_version != 2
+        attestation.schema_version != 2
         or attestation.reviewed_sha != attestation.provider_evidence.reviewed_sha
-        or attestation.staging.ref != f"v0.3.0-rc.{attestation.reviewed_sha[:12]}"
+        or attestation.provider_evidence.version != profile.version
+        or attestation.staging.ref != profile.staging_ref(attestation.reviewed_sha)
         or tuple(item.surface for item in attestation.surfaces) != _SURFACE_NAMES
         or any(item.completed_at > attestation.issued_at for item in attestation.surfaces)
     ):

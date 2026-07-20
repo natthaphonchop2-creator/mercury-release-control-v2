@@ -15,6 +15,8 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 
+from mercury_release_control.release_profile import release_profile
+
 MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 MAX_FILES = 2_000
 MAX_FILE_BYTES = 4 * 1024 * 1024
@@ -23,16 +25,22 @@ MANIFEST_PATH = "control-manifest.json"
 CHECKOUT_PIN = "34e114876b0b11c390a56381ad16ebd13914f8d5"
 REQUIRED_FILES = frozenset(
     {
+        ".github/workflows/attest-v0.2.2.yml",
+        ".github/workflows/attest-v0.3.0.yml",
         ".github/workflows/ci.yml",
         ".github/workflows/guardian.yml",
+        ".github/workflows/publish-v0.2.2.yml",
+        ".github/workflows/publish-v0.3.0.yml",
         ".gitignore",
         "LICENSE",
         "README.md",
         MANIFEST_PATH,
+        "policy-v0.2.2.json",
         "policy-v0.3.0.json",
         "pyproject.toml",
         "src/mercury_release_control/__init__.py",
         "src/mercury_release_control/guardian.py",
+        "src/mercury_release_control/release_profile.py",
         "uv.lock",
     }
 )
@@ -91,7 +99,8 @@ def verify_candidate_archive(archive_bytes: bytes) -> GuardianReceipt:
         for value in declared.values()
     ):
         raise GuardianError("candidate_manifest_invalid")
-    _validate_policy(files["policy-v0.3.0.json"])
+    for version in ("0.2.2", "0.3.0"):
+        _validate_policy(files[f"policy-v{version}.json"], version=version)
     for path, content in files.items():
         if path.startswith(".github/workflows/"):
             _validate_workflow(path, content)
@@ -215,18 +224,22 @@ def _strict_json(content: bytes, code: str) -> Mapping[str, object]:
     return payload
 
 
-def _validate_policy(content: bytes) -> None:
+def _validate_policy(content: bytes, *, version: str) -> None:
+    profile = release_profile(version)
     policy = _strict_json(content, "candidate_policy_invalid")
     release = policy.get("release")
     staging = policy.get("staging")
     expectations = policy.get("provider_expectations")
     required_variables = policy.get("required_environment_variables")
+    supabase = policy.get("supabase")
     if (
         policy.get("schema_version") != 2
         or not isinstance(release, Mapping)
-        or dict(release) != {"tag": "v0.3.0", "version": "0.3.0"}
+        or dict(release) != {"tag": profile.tag, "version": profile.version}
         or policy.get("repository") != "natthaphonchop2-creator/mercury-release-control-v2"
+        or policy.get("repository_id") != 1303413748
         or policy.get("reviewed_repository") != "natthaphonchop2-creator/mercury-tools"
+        or policy.get("reviewed_repository_id") != 1290137723
         or policy.get("staging_repository") != "natthaphonchop2-creator/mercury-tools-staging"
         or policy.get("branch") != "main"
         or policy.get("environment") != "production-release"
@@ -234,16 +247,16 @@ def _validate_policy(content: bytes) -> None:
         or dict(staging)
         != {
             "repository": "natthaphonchop2-creator/mercury-tools-staging",
-            "tag_prefix": "v0.3.0-rc.",
+            "tag_prefix": profile.staging_tag_prefix,
         }
         or not isinstance(expectations, Mapping)
         or dict(expectations)
         != {
             "catalog_action_count": 254,
             "flowaccount_environment": "sandbox",
-            "hosted_tool_count": 24,
-            "supabase_function_count": 11,
-            "supabase_table_count": 17,
+            "hosted_tool_count": profile.hosted_tool_count,
+            "supabase_function_count": profile.supabase_function_count,
+            "supabase_table_count": profile.supabase_table_count,
         }
         or required_variables
         != [
@@ -257,7 +270,13 @@ def _validate_policy(content: bytes) -> None:
             "SUPABASE_URL",
             "TARGET_REPOSITORY",
         ]
-        or not isinstance(policy.get("supabase"), Mapping)
+        or not isinstance(supabase, Mapping)
+        or supabase.get("migration_id") != profile.migration_id
+        or tuple(
+            item.get("signature") if isinstance(item, Mapping) else None
+            for item in supabase.get("functions", ())
+        )
+        != profile.supabase_function_signatures
     ):
         raise GuardianError("candidate_policy_invalid")
 

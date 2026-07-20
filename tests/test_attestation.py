@@ -128,6 +128,7 @@ def test_attestation_is_exact_fresh_and_sanitized() -> None:
         run_attempt=1,
         now=NOW,
         surface_evidence=_surface_evidence(),
+        version="0.3.0",
     )
 
     assert attestation.version == "0.3.0"
@@ -155,6 +156,7 @@ def test_attestation_schema_rejects_unknown_fields() -> None:
         run_attempt=1,
         now=NOW,
         surface_evidence=_surface_evidence(),
+        version="0.3.0",
     )
     payload = attestation.model_dump()
     payload["raw_provider_payload"] = {"access_token": "forbidden"}
@@ -173,6 +175,7 @@ def test_attestation_expires_and_rejects_identity_mismatch() -> None:
         run_attempt=1,
         now=NOW,
         surface_evidence=_surface_evidence(),
+        version="0.3.0",
     )
 
     with pytest.raises(AttestationError, match="^attestation_expired$"):

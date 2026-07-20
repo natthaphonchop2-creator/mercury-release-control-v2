@@ -32,6 +32,7 @@ def expected() -> ReleaseIdentity:
         release_bundle_artifact_id=303,
         reviewed_sha="5" * 40,
         staging_ref="v0.3.0-rc." + "5" * 12,
+        version="0.3.0",
     )
 
 

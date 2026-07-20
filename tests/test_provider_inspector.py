@@ -13,6 +13,7 @@ from mercury_release_control.provider_inspector import (
     inspect_supabase_connection,
     validate_database_url,
 )
+from mercury_release_control.release_profile import release_profile
 
 REVIEWED_SHA = "a" * 40
 
@@ -111,7 +112,7 @@ def test_inspect_providers_binds_collector_to_staging_identity(
 
     staging = SimpleNamespace(reviewed_sha=REVIEWED_SHA)
     evidence = inspect_providers(
-        policy={"release": {"version": "0.3.0"}},
+        policy={"release": {"tag": "v0.3.0", "version": "0.3.0"}},
         environment={"SAFE": "value"},
         reviewed_sha=REVIEWED_SHA,
         staging=staging,
@@ -121,7 +122,7 @@ def test_inspect_providers_binds_collector_to_staging_identity(
     assert evidence.reviewed_sha == REVIEWED_SHA
     assert calls == [
         (
-            {"release": {"version": "0.3.0"}},
+            {"release": {"tag": "v0.3.0", "version": "0.3.0"}},
             {"SAFE": "value"},
             REVIEWED_SHA,
             REVIEWED_SHA,
@@ -144,8 +145,9 @@ def test_database_url_requires_verify_full_without_echoing_password() -> None:
 
 def test_supabase_inspection_starts_read_only_and_requires_exact_inventory() -> None:
     tables = [f"table_{index:02d}" for index in range(17)]
+    profile = release_profile("0.3.0")
     definitions = {
-        f"public.function_{index}()": f"definition:public.function_{index}()" for index in range(11)
+        name: f"definition:{name}" for name in profile.supabase_function_signatures
     }
     functions = {
         name: hashlib.sha256(definition.encode()).hexdigest()
@@ -182,6 +184,7 @@ def test_supabase_inspection_starts_read_only_and_requires_exact_inventory() -> 
         expected_tables=tables,
         expected_functions=functions,
         expected_migration_id="20260719120000",
+        version="0.3.0",
     )
 
     assert calls[0][0] == "BEGIN READ ONLY"
@@ -192,7 +195,8 @@ def test_supabase_inspection_starts_read_only_and_requires_exact_inventory() -> 
 
 def test_supabase_inspection_rejects_function_definition_hash_drift() -> None:
     tables = [f"table_{index:02d}" for index in range(17)]
-    functions = {f"public.function_{index}()": "0" * 64 for index in range(11)}
+    profile = release_profile("0.3.0")
+    functions = {name: "0" * 64 for name in profile.supabase_function_signatures}
 
     class Cursor:
         last = ""
@@ -219,4 +223,5 @@ def test_supabase_inspection_rejects_function_definition_hash_drift() -> None:
             expected_tables=tables,
             expected_functions=functions,
             expected_migration_id="20260719120000",
+            version="0.3.0",
         )
