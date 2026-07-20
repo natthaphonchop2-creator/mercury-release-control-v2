@@ -45,6 +45,7 @@ V030_TRUSTED_FILE_SHA256 = {
     ".github/workflows/publish-v0.3.0.yml": (
         "a8efdc960dadcabae052dd4f0b80d5f5e1b3bf87175527c04a4201b4d2d8ff16"
     ),
+    "policy-v0.2.2.json": "e02c0b26e92fe942eed931ce026227ceb8c1f12642c0b43b0ae6c12469702bf3",
     "policy-v0.3.0.json": ("74d8344c242efa07b2dec0e48c18dd1bc18034a577e02600d6545e76ee2547f8"),
     "pyproject.toml": "f7ea42368cec3da102875f56dc7d70967a77b3794073e28416705d46fbc0663b",
     "src/mercury_release_control/__init__.py": (
@@ -55,6 +56,15 @@ V030_TRUSTED_FILE_SHA256 = {
     ),
     "src/mercury_release_control/github_preflight.py": (
         "8e8b595411bdf7f79cde04147fbf14eee1b4f28f44902ee0e549bb8ac7c27612"
+    ),
+    "src/mercury_release_control/github_publication.py": (
+        "27fc391aea9e8301b51a4793e9d11b95c2d5065974495765fcfca720ab1bc626"
+    ),
+    "src/mercury_release_control/handoff.py": (
+        "29d66537b892c2b96fc370e878de73da46b15078ed4778d89aabda634251e4bd"
+    ),
+    "src/mercury_release_control/hosted_collector.py": (
+        "4f1e7d92ba3e8b94b0cc8f60ef0b8dbb182771c3b98afe3266f9b7d9a8f707ff"
     ),
     "src/mercury_release_control/preflight.py": (
         "1e6530b020ef216cdd61736821bfb911e6042927d5213fe582ec474b2f964644"
@@ -67,6 +77,12 @@ V030_TRUSTED_FILE_SHA256 = {
     ),
     "src/mercury_release_control/public_tree.py": (
         "27b2e3bb0a74348cfc13b270920b68099c9264b751e53c56a54cebaa5431c29d"
+    ),
+    "src/mercury_release_control/publication.py": (
+        "2a6d3b9eab7a66a1e9c302e5bcae988d2d8c4f4e07f571bc4e68a04ecda65184"
+    ),
+    "src/mercury_release_control/publish_workflow.py": (
+        "d08e2df80c9301708f978a117a7581902239b6bb2e32bbf8013d759522577dba"
     ),
     "src/mercury_release_control/release_profile.py": (
         "11db6ea33f0996d6f5103faf451dff60087a5def2f27ebb6e49c7f6c11001976"
