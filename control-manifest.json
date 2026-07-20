@@ -10,7 +10,7 @@
     "LICENSE": "9902a3eec48dd57000744894b68fe22180fa0f8fa28bb8bc4b84ccb21a2f7470",
     "README.md": "d4f8bfb5eb594818bfd7ff17f9024e5ef902ebe3eb21af32829f1f38273e2ea6",
     "policy-v0.2.2.json": "e02c0b26e92fe942eed931ce026227ceb8c1f12642c0b43b0ae6c12469702bf3",
-    "policy-v0.3.0.json": "74d8344c242efa07b2dec0e48c18dd1bc18034a577e02600d6545e76ee2547f8",
+    "policy-v0.3.0.json": "f8bb99167fc4a67cfb2bc4761cb9480df1f4061342cee70ee6cc06a14741156e",
     "pyproject.toml": "f7ea42368cec3da102875f56dc7d70967a77b3794073e28416705d46fbc0663b",
     "release-notes-v0.2.2.md": "3fc349543e5284393361fb3d2cc0ae7d8ed582554edadb2174d86778794c93e7",
     "release-notes-v0.3.0.md": "b69cb4942944017428f8a9edd190bced90da56ce4757db5a4247eea15feb8e4f",
@@ -46,7 +46,7 @@
     "tests/test_staging.py": "e3775d70a35610e93058d76b00aca651c391810d4b8d20d22f715a098a3b22cd",
     "tests/test_surface_inspector.py": "9ca1d26c1d164c831da55be6a7316dae68dfeb05c8ac4be81548af2cc4455685",
     "tests/test_v022_compatibility.py": "8b040dcba23bfb171c402c196e4a6694052438eea3b4dd4eb34ae6e08153c44b",
-    "tests/test_v030_controls.py": "14796a4f75e719d5bb13c04d3bf81573451d9aad1a4e83e4e4f84385b5ff15e4",
+    "tests/test_v030_controls.py": "3b0c8ad9da58e34338546992f24da5eda1913d88dd7b26b41b296dd5849a7ff3",
     "tests/test_workflow.py": "6564d3d0024aa7a7cb2f38394ff8f59c269bd7cc293750490a05b2914da868b0",
     "uv.lock": "3f6d58f32c7d8c4f604c1ef04e90d738f2a2bed2296055da09d53a432a3e1182"
   },
