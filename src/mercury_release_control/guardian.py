@@ -26,8 +26,24 @@ MAX_TOTAL_BYTES = 64 * 1024 * 1024
 MANIFEST_PATH = "control-manifest.json"
 CHECKOUT_PIN = "34e114876b0b11c390a56381ad16ebd13914f8d5"
 V030_TRUSTED_FILE_SHA256 = {
+    ".github/workflows/attest-v0.2.2.yml": (
+        "5ea4aa1cad83979f0cedaabd3afd56a79b3653e1337d9f3769633267e6e87662"
+    ),
+    ".github/workflows/attest-v0.3.0.yml": (
+        "1f8a2fa466b58e42895a8096d09aa188a9ecf3533ac164413e72f46e166f58c4"
+    ),
+    ".github/workflows/ci.yml": "d147235488ee49c91d82d7ff96eafca704cb0b778548a0bd31265578efda93d9",
+    ".github/workflows/guardian.yml": (
+        "82c8c4deacfddad4736d89bbbf8bf197a420c5d7585dfd0ca85675871a669fe4"
+    ),
     ".github/workflows/migrate-v0.3.0.yml": (
         "acb52cd7b27dc5aa9307204e2c16220d9f4658e4fb4510c526b0516cd5aaf168"
+    ),
+    ".github/workflows/publish-v0.2.2.yml": (
+        "9e1842ba720916e82fb63d6d3a31719632fe680bd6d8c8902f5f114dde37364d"
+    ),
+    ".github/workflows/publish-v0.3.0.yml": (
+        "a8efdc960dadcabae052dd4f0b80d5f5e1b3bf87175527c04a4201b4d2d8ff16"
     ),
     "policy-v0.3.0.json": ("74d8344c242efa07b2dec0e48c18dd1bc18034a577e02600d6545e76ee2547f8"),
     "pyproject.toml": "f7ea42368cec3da102875f56dc7d70967a77b3794073e28416705d46fbc0663b",
@@ -232,10 +248,8 @@ V030_EXPECTED_POLICY: Mapping[str, object] = json.loads(
 )
 BASE_REQUIRED_FILES = frozenset(
     {
-        ".github/workflows/attest-v0.2.2.yml",
         ".github/workflows/ci.yml",
         ".github/workflows/guardian.yml",
-        ".github/workflows/publish-v0.2.2.yml",
         ".gitignore",
         "LICENSE",
         "README.md",
@@ -244,7 +258,6 @@ BASE_REQUIRED_FILES = frozenset(
         "pyproject.toml",
         "src/mercury_release_control/__init__.py",
         "src/mercury_release_control/guardian.py",
-        "src/mercury_release_control/release_profile.py",
         "uv.lock",
     }
 )
@@ -428,6 +441,14 @@ def _validate_trusted_v030_files(
 ) -> None:
     if not v030_present:
         return
+    guardian_path = "src/mercury_release_control/guardian.py"
+    candidate_guardian = files.get(guardian_path)
+    try:
+        trusted_guardian = Path(__file__).resolve().read_bytes()
+    except OSError as exc:
+        raise GuardianError("trusted_guardian_unavailable") from exc
+    if candidate_guardian != trusted_guardian:
+        raise GuardianError("candidate_trusted_file_hash_invalid")
     for path, expected_sha256 in V030_TRUSTED_FILE_SHA256.items():
         content = files.get(path)
         if content is None or hashlib.sha256(content).hexdigest() != expected_sha256:

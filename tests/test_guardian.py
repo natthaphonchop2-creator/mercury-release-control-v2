@@ -22,7 +22,13 @@ POLICY_V022 = ROOT / "policy-v0.2.2.json"
 POLICY_V030 = ROOT / "policy-v0.3.0.json"
 MIGRATION_WORKFLOW = ROOT / ".github/workflows/migrate-v0.3.0.yml"
 TRUSTED_V030_PATHS = (
+    ".github/workflows/attest-v0.2.2.yml",
+    ".github/workflows/attest-v0.3.0.yml",
+    ".github/workflows/ci.yml",
+    ".github/workflows/guardian.yml",
     ".github/workflows/migrate-v0.3.0.yml",
+    ".github/workflows/publish-v0.2.2.yml",
+    ".github/workflows/publish-v0.3.0.yml",
     "policy-v0.3.0.json",
     "pyproject.toml",
     "src/mercury_release_control/__init__.py",
@@ -110,9 +116,12 @@ def _candidate_files(marker: Path | None = None) -> dict[str, bytes]:
         "policy-v0.3.0.json": POLICY_V030.read_bytes(),
         "pyproject.toml": b"[project]\nname='mercury-release-control'\nversion='0.3.0'\n",
         "src/mercury_release_control/__init__.py": b"__version__ = '0.3.0'\n",
-        "src/mercury_release_control/guardian.py": payload,
+        "src/mercury_release_control/guardian.py": (
+            ROOT / "src/mercury_release_control/guardian.py"
+        ).read_bytes(),
         "src/mercury_release_control/production_migration.py": b"VALUE = 1\n",
         "src/mercury_release_control/release_profile.py": b"PROFILES = ('0.2.2', '0.3.0')\n",
+        "src/untrusted_candidate.py": payload,
         "uv.lock": b"version = 1\n",
     }
     files.update({path: (ROOT / path).read_bytes() for path in TRUSTED_V030_PATHS})
@@ -204,6 +213,21 @@ def test_guardian_rejects_manifest_hash_drift() -> None:
         verify_candidate_archive(_archive(files))
 
 
+def test_guardian_rejects_candidate_guardian_tamper_with_regenerated_manifest() -> None:
+    files = _candidate_files()
+    files["src/mercury_release_control/guardian.py"] += b"CHANGED = True\n"
+    files["control-manifest.json"] = json.dumps(
+        build_manifest_payload(
+            {key: value for key, value in files.items() if key != "control-manifest.json"}
+        ),
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+
+    with pytest.raises(GuardianError, match="^candidate_trusted_file_hash_invalid$"):
+        verify_candidate_archive(_archive(files))
+
+
 def test_guardian_pins_exact_v030_privileged_runtime_import_closure() -> None:
     assert set(guardian.V030_TRUSTED_FILE_SHA256) == set(TRUSTED_V030_PATHS)
     assert "src/mercury_release_control/guardian.py" not in guardian.V030_TRUSTED_FILE_SHA256
@@ -271,7 +295,7 @@ def test_guardian_rejects_v030_security_policy_shape_drift(
 
 
 def test_guardian_rejects_unpinned_action() -> None:
-    files = _candidate_files()
+    files = _v022_candidate_files()
     files[".github/workflows/ci.yml"] = _ci_workflow().replace(CHECKOUT_PIN.encode(), b"main")
     files["control-manifest.json"] = json.dumps(
         build_manifest_payload(
@@ -286,7 +310,7 @@ def test_guardian_rejects_unpinned_action() -> None:
 
 
 def test_guardian_rejects_permission_escalation() -> None:
-    files = _candidate_files()
+    files = _v022_candidate_files()
     files[".github/workflows/ci.yml"] = _ci_workflow().replace(
         b"contents: read", b"contents: write"
     )
@@ -356,7 +380,7 @@ def test_guardian_rejects_literal_secret_assignment() -> None:
 
 def test_guardian_allows_secret_variable_reads() -> None:
     files = _candidate_files()
-    files["src/mercury_release_control/guardian.py"] += (
+    files["src/unpinned_helper.py"] = (
         b'\nclient_secret = environment["CLIENT_SECRET"]\n'
     )
     files["control-manifest.json"] = json.dumps(
