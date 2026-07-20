@@ -19,7 +19,7 @@ from mercury_release_control.release_profile import release_profile
 
 ROOT = Path(__file__).resolve().parents[1]
 APPROVED_ARCHIVE = ROOT / "tests/fixtures/v030-approved-candidate.tar.gz"
-APPROVED_ARCHIVE_SHA256 = "95a365f4288cf5a2a978f5bedf1b4dd3e5cd6ba4a9e9cd0886fa982cf45dc95c"
+APPROVED_ARCHIVE_SHA256 = "9f4df4df1c3ac9512e7d1ece0a509fe5cc0c6aac2a5a20fa6883c7c587397687"
 EXPECTED_PRIVILEGED_PATHS = {
     ".github/workflows/attest-v0.2.2.yml",
     ".github/workflows/attest-v0.3.0.yml",
@@ -85,7 +85,23 @@ def test_v030_guardian_upgrade_accepts_exact_approved_candidate_archive() -> Non
     archive = APPROVED_ARCHIVE.read_bytes()
 
     assert hashlib.sha256(archive).hexdigest() == APPROVED_ARCHIVE_SHA256
+    assert set(guardian._read_candidate_archive(archive)) == set(guardian.V030_ALLOWED_FILES)
     assert verify_candidate_archive(archive).status == "passed"
+
+
+def test_v030_guardian_upgrade_rejects_additive_candidate_path() -> None:
+    files = guardian._read_candidate_archive(APPROVED_ARCHIVE.read_bytes())
+    files["json.py"] = b"raise RuntimeError('unexpected import')\n"
+    files[guardian.MANIFEST_PATH] = json.dumps(
+        build_manifest_payload(
+            {key: value for key, value in files.items() if key != guardian.MANIFEST_PATH}
+        ),
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+
+    with pytest.raises(GuardianError, match="^candidate_inventory_invalid$"):
+        verify_candidate_archive(_candidate_archive(files))
 
 
 @pytest.mark.parametrize("path", sorted(EXPECTED_PRIVILEGED_PATHS))
