@@ -29,6 +29,7 @@ REQUIRED_FILES = frozenset(
         ".github/workflows/attest-v0.3.0.yml",
         ".github/workflows/ci.yml",
         ".github/workflows/guardian.yml",
+        ".github/workflows/migrate-v0.3.0.yml",
         ".github/workflows/publish-v0.2.2.yml",
         ".github/workflows/publish-v0.3.0.yml",
         ".gitignore",
@@ -40,6 +41,7 @@ REQUIRED_FILES = frozenset(
         "pyproject.toml",
         "src/mercury_release_control/__init__.py",
         "src/mercury_release_control/guardian.py",
+        "src/mercury_release_control/production_migration.py",
         "src/mercury_release_control/release_profile.py",
         "uv.lock",
     }
@@ -57,6 +59,7 @@ _ALLOWED_PERMISSIONS = {
     "attest-v0.2.2.yml": {"actions": "write", "contents": "read"},
     "publish-v0.2.2.yml": {"actions": "read", "contents": "read"},
     "attest-v0.3.0.yml": {"actions": "write", "contents": "read"},
+    "migrate-v0.3.0.yml": {"contents": "read"},
     "publish-v0.3.0.yml": {"actions": "read", "contents": "read"},
 }
 
@@ -323,6 +326,56 @@ def _validate_workflow(path: str, content: bytes) -> None:
             or checkout_with.get("ref") != "${{ github.event.pull_request.base.sha }}"
         ):
             raise GuardianError("candidate_guardian_workflow_invalid")
+    if name == "migrate-v0.3.0.yml":
+        _validate_migration_workflow(workflow, text)
+
+
+def _validate_migration_workflow(workflow: Mapping[str, object], text: str) -> None:
+    expected_on = {
+        "workflow_dispatch": {
+            "inputs": {
+                "reviewed_commit_sha": {
+                    "description": "Exact reviewed mercury-tools main commit",
+                    "required": "true",
+                    "type": "string",
+                }
+            }
+        }
+    }
+    expected_markers = (
+        "production-release",
+        "natthaphonchop2-creator/mercury-tools",
+        "1290137723",
+        "supabase/migrations/20260719120000_connector_neutral_profiles.sql",
+        "2ca702823fd17a7806ead1b829af21984ea54b676700cf443cb69b7e6161c0ca",
+        "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7",
+        "git/ref/heads/main",
+        "PGSSLROOTCERT",
+        "mercury_release_control.production_migration",
+    )
+    jobs = workflow.get("jobs")
+    concurrency = workflow.get("concurrency")
+    if (
+        workflow.get("on") != expected_on
+        or not isinstance(jobs, Mapping)
+        or set(jobs) != {"migrate", "reject-non-main"}
+        or not isinstance(jobs.get("migrate"), Mapping)
+        or jobs["migrate"].get("environment") != "production-release"
+        or jobs["migrate"].get("if") != "${{ github.ref == 'refs/heads/main' }}"
+        or not isinstance(jobs.get("reject-non-main"), Mapping)
+        or jobs["reject-non-main"].get("if") != "${{ github.ref != 'refs/heads/main' }}"
+        or concurrency
+        != {
+            "cancel-in-progress": "false",
+            "group": "mercury-v0.3.0-production-migration",
+        }
+        or any(marker not in text for marker in expected_markers)
+        or "actions/upload-artifact" in text
+        or "actions/download-artifact" in text
+        or "pull_request" in text
+        or "set -x" in text
+    ):
+        raise GuardianError("candidate_migration_workflow_invalid")
 
 
 def _mappings(value: object) -> tuple[Mapping[str, object], ...]:

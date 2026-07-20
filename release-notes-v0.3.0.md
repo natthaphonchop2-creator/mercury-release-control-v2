@@ -19,3 +19,8 @@ secrets.
 
 Publication, migration, deployment, tagging, and marketplace submission remain
 separate release operations.
+
+The release control plane now includes a manual, environment-approved production
+migration runner. It remains unapplied by this commit; provider attestation must
+continue to fail until independently reviewed migration and deployment evidence
+are present.

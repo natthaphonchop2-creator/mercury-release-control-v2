@@ -11,5 +11,13 @@ ERP credentials and raw accounting payloads must never be committed here. Live
 release credentials exist only in the protected `production-release` GitHub
 environment.
 
+The manual `migrate-v0.3.0.yml` workflow is the only trusted production schema
+mutation path for this release. It binds an approved Mercury main commit to one
+checksum-pinned migration, verifies the exact pre-migration history and schema
+footprint, runs one locked transaction, and validates the resulting security
+boundary before commit. A configured GitHub control plane does not imply that
+the provider migration or deployment has completed; hosted attestation checks
+those states independently.
+
 The repository is an independent open-source project and is not affiliated with
 Mercury Technologies, Inc.

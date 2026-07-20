@@ -17,6 +17,7 @@ CHECKOUT_PIN = "34e114876b0b11c390a56381ad16ebd13914f8d5"
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_V022 = ROOT / "policy-v0.2.2.json"
 POLICY_V030 = ROOT / "policy-v0.3.0.json"
+MIGRATION_WORKFLOW = ROOT / ".github/workflows/migrate-v0.3.0.yml"
 
 
 def _ci_workflow() -> bytes:
@@ -71,14 +72,11 @@ def _candidate_files(marker: Path | None = None) -> dict[str, bytes]:
     if marker is not None:
         payload = f"from pathlib import Path\nPath({str(marker)!r}).touch()\n".encode()
     files = {
-        ".github/workflows/attest-v0.2.2.yml": _release_workflow(
-            action="attest", version="0.2.2"
-        ),
-        ".github/workflows/attest-v0.3.0.yml": _release_workflow(
-            action="attest", version="0.3.0"
-        ),
+        ".github/workflows/attest-v0.2.2.yml": _release_workflow(action="attest", version="0.2.2"),
+        ".github/workflows/attest-v0.3.0.yml": _release_workflow(action="attest", version="0.3.0"),
         ".github/workflows/ci.yml": _ci_workflow(),
         ".github/workflows/guardian.yml": _guardian_workflow(),
+        ".github/workflows/migrate-v0.3.0.yml": MIGRATION_WORKFLOW.read_bytes(),
         ".github/workflows/publish-v0.2.2.yml": _release_workflow(
             action="publish", version="0.2.2"
         ),
@@ -93,6 +91,7 @@ def _candidate_files(marker: Path | None = None) -> dict[str, bytes]:
         "pyproject.toml": b"[project]\nname='mercury-release-control'\nversion='0.3.0'\n",
         "src/mercury_release_control/__init__.py": b"__version__ = '0.3.0'\n",
         "src/mercury_release_control/guardian.py": payload,
+        "src/mercury_release_control/production_migration.py": b"VALUE = 1\n",
         "src/mercury_release_control/release_profile.py": b"PROFILES = ('0.2.2', '0.3.0')\n",
         "uv.lock": b"version = 1\n",
     }
@@ -130,7 +129,7 @@ def test_guardian_reads_candidate_as_data_without_execution(tmp_path: Path) -> N
     receipt = verify_candidate_archive(_archive(_candidate_files(marker)))
 
     assert receipt.status == "passed"
-    assert receipt.file_count == 17
+    assert receipt.file_count == 19
     assert not marker.exists()
 
 
@@ -178,6 +177,26 @@ def test_guardian_rejects_permission_escalation() -> None:
     ).encode()
 
     with pytest.raises(GuardianError, match="^candidate_workflow_permissions_invalid$"):
+        verify_candidate_archive(_archive(files))
+
+
+def test_guardian_rejects_production_migration_identity_hash_drift() -> None:
+    files = _candidate_files()
+    files[".github/workflows/migrate-v0.3.0.yml"] = files[
+        ".github/workflows/migrate-v0.3.0.yml"
+    ].replace(
+        b"2ca702823fd17a7806ead1b829af21984ea54b676700cf443cb69b7e6161c0ca",
+        b"0ca702823fd17a7806ead1b829af21984ea54b676700cf443cb69b7e6161c0ca",
+    )
+    files["control-manifest.json"] = json.dumps(
+        build_manifest_payload(
+            {key: value for key, value in files.items() if key != "control-manifest.json"}
+        ),
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+
+    with pytest.raises(GuardianError, match="^candidate_migration_workflow_invalid$"):
         verify_candidate_archive(_archive(files))
 
 

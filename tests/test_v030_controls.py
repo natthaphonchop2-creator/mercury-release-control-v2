@@ -5,12 +5,11 @@ import json
 import re
 from pathlib import Path
 
-import pytest
 import yaml
 
 from mercury_release_control import guardian
 from mercury_release_control.provider_inspector import inspect_provider_state
-from mercury_release_control.surface_inspector import InspectionError, validate_policy
+from mercury_release_control.surface_inspector import validate_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "policy-v0.3.0.json"
@@ -108,15 +107,15 @@ def test_committed_v022_policy_is_configured_and_validates_without_mutation() ->
     assert policy["bootstrap_state"] == "configured"
 
 
-def test_committed_v030_policy_stays_pending_until_production_migration() -> None:
+def test_committed_v030_policy_is_configured_without_claiming_provider_readiness() -> None:
     policy = _json(POLICY_PATH)
     original = json.loads(json.dumps(policy))
 
-    with pytest.raises(InspectionError, match="^policy_unconfigured$"):
-        validate_policy(policy)
+    validated = validate_policy(policy)
 
     assert policy == original
-    assert policy["bootstrap_state"] == "pending-github-configuration"
+    assert validated["release"] == {"tag": "v0.3.0", "version": "0.3.0"}
+    assert policy["bootstrap_state"] == "configured"
     assert policy["supabase"]["migration_id"] == "20260719120000"
     assert (
         policy["supabase"]["migration_history_sha256"]
@@ -152,9 +151,7 @@ def test_v030_workflows_keep_attempt_digest_repository_and_sha_bindings() -> Non
     publish = _workflow(PUBLISH_WORKFLOW)
     attest_text = ATTEST_WORKFLOW.read_text(encoding="utf-8") if ATTEST_WORKFLOW.is_file() else ""
     publish_text = (
-        PUBLISH_WORKFLOW.read_text(encoding="utf-8")
-        if PUBLISH_WORKFLOW.is_file()
-        else ""
+        PUBLISH_WORKFLOW.read_text(encoding="utf-8") if PUBLISH_WORKFLOW.is_file() else ""
     )
 
     assert attest.get("permissions") == {"actions": "write", "contents": "read"}
@@ -162,8 +159,7 @@ def test_v030_workflows_keep_attempt_digest_repository_and_sha_bindings() -> Non
     assert "policy-v0.3.0.json" in attest_text
     assert "release-v0.3.0.yml/dispatches" in attest_text
     assert (
-        "mercury-v0.3.0-attestation-"
-        "${{ github.run_id }}-attempt-${{ github.run_attempt }}"
+        "mercury-v0.3.0-attestation-${{ github.run_id }}-attempt-${{ github.run_attempt }}"
     ) in attest_text
     assert "policy-v0.3.0.json" in publish_text
     assert '.path == ".github/workflows/release-v0.3.0.yml"' in publish_text
@@ -187,15 +183,18 @@ def test_v030_workflows_keep_attempt_digest_repository_and_sha_bindings() -> Non
 def test_v030_guardian_and_manifest_cover_new_critical_controls() -> None:
     expected = {
         ".github/workflows/attest-v0.3.0.yml",
+        ".github/workflows/migrate-v0.3.0.yml",
         ".github/workflows/publish-v0.3.0.yml",
         "policy-v0.3.0.json",
         "release-notes-v0.3.0.md",
+        "src/mercury_release_control/production_migration.py",
     }
     assert "policy-v0.3.0.json" in guardian.REQUIRED_FILES
     assert guardian._ALLOWED_PERMISSIONS["attest-v0.3.0.yml"] == {
         "actions": "write",
         "contents": "read",
     }
+    assert guardian._ALLOWED_PERMISSIONS["migrate-v0.3.0.yml"] == {"contents": "read"}
     assert guardian._ALLOWED_PERMISSIONS["publish-v0.3.0.yml"] == {
         "actions": "read",
         "contents": "read",
@@ -204,9 +203,10 @@ def test_v030_guardian_and_manifest_cover_new_critical_controls() -> None:
     manifest = _json(ROOT / "control-manifest.json").get("files", {})
     assert expected.issubset(manifest)
     for relative_path in expected:
-        assert manifest[relative_path] == hashlib.sha256(
-            (ROOT / relative_path).read_bytes()
-        ).hexdigest()
+        assert (
+            manifest[relative_path]
+            == hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest()
+        )
 
 
 def test_v030_release_notes_are_candidate_only_and_secretless() -> None:
