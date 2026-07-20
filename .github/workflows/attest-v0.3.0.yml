@@ -104,6 +104,19 @@ jobs:
             --output "$RUNNER_TEMP/mercury-release/staging-repository" \
             --policy policy-v0.3.0.json \
             --reviewed-sha "$REVIEWED_SHA"
+      - name: Prepare checksum-pinned Supabase root CA
+        env:
+          SUPABASE_CA_SHA256: 700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7
+          SUPABASE_CA_URL: https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt
+        run: |
+          set -euo pipefail
+          CA_ROOT="$RUNNER_TEMP/mercury-release/tls"
+          CA_PATH="$CA_ROOT/prod-ca-2021.crt"
+          install -d -m 700 "$CA_ROOT"
+          curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+            "$SUPABASE_CA_URL" --output "$CA_PATH"
+          printf '%s  %s\n' "$SUPABASE_CA_SHA256" "$CA_PATH" | sha256sum --check
+          chmod 0444 "$CA_PATH"
       - name: Inspect every hosted and repository surface
         env:
           FLOWACCOUNT_SANDBOX_BASE_URL: ${{ vars.FLOWACCOUNT_SANDBOX_BASE_URL }}
@@ -125,6 +138,9 @@ jobs:
           TARGET_REPOSITORY: ${{ vars.TARGET_REPOSITORY }}
         run: |
           set -euo pipefail
+          PGSSLROOTCERT="$RUNNER_TEMP/mercury-release/tls/prod-ca-2021.crt"
+          export PGSSLROOTCERT
+          test -r "$PGSSLROOTCERT"
           STAGING_REF="$(jq -er '.tag' "$RUNNER_TEMP/mercury-release/staging.json")"
           uv run python -m mercury_release_control.surface_inspector \
             --interface-version 2 \

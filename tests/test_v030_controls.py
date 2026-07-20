@@ -10,7 +10,7 @@ import yaml
 
 from mercury_release_control import guardian
 from mercury_release_control.provider_inspector import inspect_provider_state
-from mercury_release_control.surface_inspector import InspectionError, validate_policy
+from mercury_release_control.surface_inspector import validate_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "policy-v0.3.0.json"
@@ -97,15 +97,24 @@ def test_v030_policy_preserves_exact_trust_and_provider_bindings() -> None:
     }
 
 
-def test_committed_v030_policy_remains_fail_closed_without_runtime_mutation() -> None:
-    policy = _json(POLICY_PATH)
+@pytest.mark.parametrize(
+    ("version", "release"),
+    [
+        ("0.2.2", {"tag": "v0.2.2", "version": "0.2.2"}),
+        ("0.3.0", {"tag": "v0.3.0", "version": "0.3.0"}),
+    ],
+)
+def test_committed_policies_are_configured_and_validate_without_mutation(
+    version: str, release: dict[str, str]
+) -> None:
+    policy = _json(ROOT / f"policy-v{version}.json")
     original = json.loads(json.dumps(policy))
 
-    with pytest.raises(InspectionError, match="^policy_unconfigured$"):
-        validate_policy(policy)
+    validated = validate_policy(policy)
 
+    assert validated["release"] == release
     assert policy == original
-    assert policy["bootstrap_state"] == "pending-github-configuration"
+    assert policy["bootstrap_state"] == "configured"
 
 
 def test_committed_policies_pin_the_version_isolated_shared_inspector() -> None:

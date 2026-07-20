@@ -118,7 +118,7 @@ def collect_remote_snapshot(
                 "can_admins_bypass": environment_payload.get("can_admins_bypass"),
                 "deployment_branch_policy": environment_payload.get("deployment_branch_policy"),
                 "name": environment_payload.get("name"),
-                "prevent_self_review": environment_payload.get("prevent_self_review"),
+                "prevent_self_review": _prevent_self_review(environment_payload),
                 "reviewer_ids": _reviewer_ids(environment_payload),
             },
             "environment_secrets": _inventory(
@@ -183,6 +183,22 @@ def _reviewer_ids(environment: Mapping[str, object]) -> list[int]:
             reviewer = _mapping(_mapping(record).get("reviewer", record))
             output.add(_positive_int(reviewer.get("id")))
     return sorted(output)
+
+
+def _prevent_self_review(environment: Mapping[str, object]) -> bool:
+    rules = environment.get("protection_rules")
+    if not isinstance(rules, list):
+        raise PreflightError("github_environment_invalid")
+    reviewer_rules = [
+        rule
+        for rule in rules
+        if isinstance(rule, dict) and rule.get("type") == "required_reviewers"
+    ]
+    if len(reviewer_rules) != 1 or not isinstance(
+        reviewer_rules[0].get("prevent_self_review"), bool
+    ):
+        raise PreflightError("github_environment_invalid")
+    return reviewer_rules[0]["prevent_self_review"]
 
 
 def _inventory(raw: object, key: str) -> list[str]:

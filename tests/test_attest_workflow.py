@@ -5,8 +5,14 @@ from pathlib import Path
 
 import yaml
 
-WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/attest-v0.3.0.yml"
+ROOT = Path(__file__).resolve().parents[1]
+WORKFLOW = ROOT / ".github/workflows/attest-v0.3.0.yml"
 ACTION_PIN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$")
+SUPABASE_CA_URL = (
+    "https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/"
+    "prod/ssl/prod-ca-2021.crt"
+)
+SUPABASE_CA_SHA256 = "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7"
 
 
 def test_attestation_workflow_is_pinned_single_artifact_and_dependency_ordered() -> None:
@@ -55,6 +61,33 @@ def test_attestation_workflow_supplies_render_owner_id_to_surface_inspector() ->
     )
 
     assert inspect_step["env"]["RENDER_OWNER_ID"] == "${{ vars.RENDER_OWNER_ID }}"
+
+
+def test_attestation_workflows_pin_supabase_ca_and_bind_pgsslrootcert() -> None:
+    for version in ("0.2.2", "0.3.0"):
+        path = ROOT / f".github/workflows/attest-v{version}.yml"
+        workflow = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        steps = workflow["jobs"]["attest"]["steps"]
+        names = [step["name"] for step in steps]
+        prepare = next(
+            step for step in steps if step["name"] == "Prepare checksum-pinned Supabase root CA"
+        )
+        inspect = next(
+            step for step in steps if step["name"] == "Inspect every hosted and repository surface"
+        )
+
+        assert names.index(prepare["name"]) < names.index(inspect["name"])
+        assert prepare["env"] == {
+            "SUPABASE_CA_SHA256": SUPABASE_CA_SHA256,
+            "SUPABASE_CA_URL": SUPABASE_CA_URL,
+        }
+        assert "curl --fail --location --proto '=https' --tlsv1.2" in prepare["run"]
+        assert "sha256sum --check" in prepare["run"]
+        assert 'PGSSLROOTCERT="$RUNNER_TEMP/mercury-release/tls/prod-ca-2021.crt"' in inspect[
+            "run"
+        ]
+        assert "export PGSSLROOTCERT" in inspect["run"]
+        assert 'test -r "$PGSSLROOTCERT"' in inspect["run"]
 
 
 def test_attestation_dispatch_does_not_relay_caller_supplied_staging_identity() -> None:
