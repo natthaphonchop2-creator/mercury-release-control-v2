@@ -48,6 +48,16 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain)"
           uv sync --frozen
+      - name: Verify GitHub identities and protected release environment
+        env:
+          RELEASE_CONTROL_PREFLIGHT_TOKEN: ${{ secrets.RELEASE_CONTROL_PREFLIGHT_TOKEN }}
+        run: |
+          set -euo pipefail
+          umask 077
+          install -d -m 700 "$RUNNER_TEMP/mercury-migration"
+          uv run python -m mercury_release_control.workflow preflight \
+            --policy policy-v0.3.0.json \
+            --output "$RUNNER_TEMP/mercury-migration/preflight.json"
       - name: Fetch exact reviewed migration as untrusted data
         env:
           GH_TOKEN: ${{ secrets.MERCURY_TARGET_REPOSITORY_READ_TOKEN }}

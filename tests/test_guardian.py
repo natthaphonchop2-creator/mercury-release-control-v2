@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+import hashlib
 import io
 import json
 import tarfile
@@ -7,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from mercury_release_control import guardian
 from mercury_release_control.guardian import (
     GuardianError,
     build_manifest_payload,
@@ -18,6 +21,23 @@ ROOT = Path(__file__).resolve().parents[1]
 POLICY_V022 = ROOT / "policy-v0.2.2.json"
 POLICY_V030 = ROOT / "policy-v0.3.0.json"
 MIGRATION_WORKFLOW = ROOT / ".github/workflows/migrate-v0.3.0.yml"
+TRUSTED_V030_PATHS = (
+    ".github/workflows/migrate-v0.3.0.yml",
+    "policy-v0.3.0.json",
+    "pyproject.toml",
+    "src/mercury_release_control/__init__.py",
+    "src/mercury_release_control/attestation.py",
+    "src/mercury_release_control/github_preflight.py",
+    "src/mercury_release_control/preflight.py",
+    "src/mercury_release_control/production_migration.py",
+    "src/mercury_release_control/provider_inspector.py",
+    "src/mercury_release_control/public_tree.py",
+    "src/mercury_release_control/release_profile.py",
+    "src/mercury_release_control/staging.py",
+    "src/mercury_release_control/surface_inspector.py",
+    "src/mercury_release_control/workflow.py",
+    "uv.lock",
+)
 
 
 def _ci_workflow() -> bytes:
@@ -95,8 +115,23 @@ def _candidate_files(marker: Path | None = None) -> dict[str, bytes]:
         "src/mercury_release_control/release_profile.py": b"PROFILES = ('0.2.2', '0.3.0')\n",
         "uv.lock": b"version = 1\n",
     }
+    files.update({path: (ROOT / path).read_bytes() for path in TRUSTED_V030_PATHS})
     files["control-manifest.json"] = json.dumps(
         build_manifest_payload(files),
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return files
+
+
+def _v022_candidate_files() -> dict[str, bytes]:
+    files = _candidate_files()
+    for path in guardian.V030_MARKER_FILES:
+        files.pop(path, None)
+    files["control-manifest.json"] = json.dumps(
+        build_manifest_payload(
+            {key: value for key, value in files.items() if key != "control-manifest.json"}
+        ),
         separators=(",", ":"),
         sort_keys=True,
     ).encode()
@@ -129,7 +164,7 @@ def test_guardian_reads_candidate_as_data_without_execution(tmp_path: Path) -> N
     receipt = verify_candidate_archive(_archive(_candidate_files(marker)))
 
     assert receipt.status == "passed"
-    assert receipt.file_count == 19
+    assert receipt.file_count == len(_candidate_files())
     assert not marker.exists()
 
 
@@ -140,12 +175,99 @@ def test_guardian_accepts_git_commit_global_pax_comment() -> None:
     assert receipt.status == "passed"
 
 
+def test_guardian_upgrade_remains_compatible_with_v022_only_candidate() -> None:
+    receipt = verify_candidate_archive(_archive(_v022_candidate_files()))
+
+    assert receipt.status == "passed"
+
+
+def test_guardian_rejects_partial_v030_candidate() -> None:
+    files = _v022_candidate_files()
+    files["policy-v0.3.0.json"] = POLICY_V030.read_bytes()
+    files["control-manifest.json"] = json.dumps(
+        build_manifest_payload(
+            {key: value for key, value in files.items() if key != "control-manifest.json"}
+        ),
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+
+    with pytest.raises(GuardianError, match="^candidate_inventory_invalid$"):
+        verify_candidate_archive(_archive(files))
+
+
 def test_guardian_rejects_manifest_hash_drift() -> None:
     files = _candidate_files()
     files["src/mercury_release_control/guardian.py"] += b"CHANGED = True\n"
 
     with pytest.raises(GuardianError, match="^candidate_manifest_mismatch$"):
         verify_candidate_archive(_archive(files))
+
+
+def test_guardian_pins_exact_v030_privileged_runtime_import_closure() -> None:
+    assert set(guardian.V030_TRUSTED_FILE_SHA256) == set(TRUSTED_V030_PATHS)
+    assert "src/mercury_release_control/guardian.py" not in guardian.V030_TRUSTED_FILE_SHA256
+    for path in TRUSTED_V030_PATHS:
+        assert (
+            guardian.V030_TRUSTED_FILE_SHA256[path]
+            == hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+        )
+
+
+@pytest.mark.parametrize("path", TRUSTED_V030_PATHS)
+def test_guardian_rejects_tampered_v030_file_with_regenerated_manifest(path: str) -> None:
+    files = _candidate_files()
+    files[path] += b"\n "
+    files["control-manifest.json"] = json.dumps(
+        build_manifest_payload(
+            {key: value for key, value in files.items() if key != "control-manifest.json"}
+        ),
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+
+    with pytest.raises(GuardianError, match="^candidate_trusted_file_hash_invalid$"):
+        verify_candidate_archive(_archive(files))
+
+
+def test_guardian_pins_full_v030_policy_shape() -> None:
+    policy = json.loads(POLICY_V030.read_text(encoding="utf-8"))
+
+    assert policy == guardian.V030_EXPECTED_POLICY
+
+
+@pytest.mark.parametrize(
+    ("path", "replacement"),
+    (
+        (("repository_id",), 1),
+        (("reviewed_repository_id",), 1),
+        (("required_reviewer_ids",), [1]),
+        (("required_environment_secrets",), ["SUPABASE_DB_URL"]),
+        (("required_environment_variables",), ["SUPABASE_URL"]),
+        (("forbidden_repository_secrets",), []),
+        (("immutable_releases_required",), False),
+        (("release_tag_ruleset", "enforcement"), "disabled"),
+        (("supabase", "migration_id"), "20260716100000"),
+        (("supabase", "migration_history_sha256"), "0" * 64),
+        (("supabase", "schema_sha256"), "0" * 64),
+        (("release", "tag"), "v0.3.0-tampered"),
+        (("release", "version"), "0.3.1"),
+    ),
+)
+def test_guardian_rejects_v030_security_policy_shape_drift(
+    path: tuple[str, ...], replacement: object
+) -> None:
+    policy = copy.deepcopy(json.loads(POLICY_V030.read_text(encoding="utf-8")))
+    target = policy
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = replacement
+
+    with pytest.raises(GuardianError, match="^candidate_policy_invalid$"):
+        guardian._validate_policy(
+            json.dumps(policy, separators=(",", ":"), sort_keys=True).encode(),
+            version="0.3.0",
+        )
 
 
 def test_guardian_rejects_unpinned_action() -> None:
@@ -196,7 +318,7 @@ def test_guardian_rejects_production_migration_identity_hash_drift() -> None:
         sort_keys=True,
     ).encode()
 
-    with pytest.raises(GuardianError, match="^candidate_migration_workflow_invalid$"):
+    with pytest.raises(GuardianError, match="^candidate_trusted_file_hash_invalid$"):
         verify_candidate_archive(_archive(files))
 
 
@@ -259,7 +381,7 @@ def test_guardian_rejects_duplicate_policy_keys() -> None:
         sort_keys=True,
     ).encode()
 
-    with pytest.raises(GuardianError, match="^candidate_policy_invalid$"):
+    with pytest.raises(GuardianError, match="^candidate_trusted_file_hash_invalid$"):
         verify_candidate_archive(_archive(files))
 
 
@@ -276,5 +398,5 @@ def test_guardian_rejects_policy_without_required_render_owner_variable() -> Non
         sort_keys=True,
     ).encode()
 
-    with pytest.raises(GuardianError, match="^candidate_policy_invalid$"):
+    with pytest.raises(GuardianError, match="^candidate_trusted_file_hash_invalid$"):
         verify_candidate_archive(_archive(files))

@@ -1,5 +1,7 @@
 """Static, non-executing verifier for release-control pull-request candidates."""
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import argparse
@@ -23,29 +25,239 @@ MAX_FILE_BYTES = 4 * 1024 * 1024
 MAX_TOTAL_BYTES = 64 * 1024 * 1024
 MANIFEST_PATH = "control-manifest.json"
 CHECKOUT_PIN = "34e114876b0b11c390a56381ad16ebd13914f8d5"
-REQUIRED_FILES = frozenset(
+V030_TRUSTED_FILE_SHA256 = {
+    ".github/workflows/migrate-v0.3.0.yml": (
+        "acb52cd7b27dc5aa9307204e2c16220d9f4658e4fb4510c526b0516cd5aaf168"
+    ),
+    "policy-v0.3.0.json": ("74d8344c242efa07b2dec0e48c18dd1bc18034a577e02600d6545e76ee2547f8"),
+    "pyproject.toml": "f7ea42368cec3da102875f56dc7d70967a77b3794073e28416705d46fbc0663b",
+    "src/mercury_release_control/__init__.py": (
+        "735f223b0e1fe89a4515496dbec2e3dbc30218c044a9085624e5ada69af22ad9"
+    ),
+    "src/mercury_release_control/attestation.py": (
+        "389a4704b7e5cc7ac35f213b3613ceaa35d032a856e4c53d43f07257ca110962"
+    ),
+    "src/mercury_release_control/github_preflight.py": (
+        "8e8b595411bdf7f79cde04147fbf14eee1b4f28f44902ee0e549bb8ac7c27612"
+    ),
+    "src/mercury_release_control/preflight.py": (
+        "1e6530b020ef216cdd61736821bfb911e6042927d5213fe582ec474b2f964644"
+    ),
+    "src/mercury_release_control/production_migration.py": (
+        "627d935af36fc612e7c2a19e1f329fb9d3ec0a42faf3df08e620b57b67a2e1ed"
+    ),
+    "src/mercury_release_control/provider_inspector.py": (
+        "410c6baf5f62e5631d41c1fd19f74d08ca73d5f8ba1aa208e070d8a5acb6f7e3"
+    ),
+    "src/mercury_release_control/public_tree.py": (
+        "27b2e3bb0a74348cfc13b270920b68099c9264b751e53c56a54cebaa5431c29d"
+    ),
+    "src/mercury_release_control/release_profile.py": (
+        "11db6ea33f0996d6f5103faf451dff60087a5def2f27ebb6e49c7f6c11001976"
+    ),
+    "src/mercury_release_control/staging.py": (
+        "fc8dcb856b0f5d0ac0c9355c5f1ca4edda4a0e6a6e84ec7dad302aace59c301e"
+    ),
+    "src/mercury_release_control/surface_inspector.py": (
+        "94f3bfa679e021213fa1103346925f6ba24691d9a8a3f3ee402f8a93568caa0f"
+    ),
+    "src/mercury_release_control/workflow.py": (
+        "d7d8a97b926a183fbd688d59785107a8b4763e60781c297d8cceb2949230e685"
+    ),
+    "uv.lock": "3f6d58f32c7d8c4f604c1ef04e90d738f2a2bed2296055da09d53a432a3e1182",
+}
+# This baseline is intentionally inline: the trusted guardian must not derive it
+# from candidate-controlled policy or manifest content.
+V030_EXPECTED_POLICY: Mapping[str, object] = json.loads(
+    r"""
+{
+  "schema_version": 2,
+  "bootstrap_state": "configured",
+  "repository": "natthaphonchop2-creator/mercury-release-control-v2",
+  "repository_id": 1303413748,
+  "reviewed_repository": "natthaphonchop2-creator/mercury-tools",
+  "reviewed_repository_id": 1290137723,
+  "staging_repository": "natthaphonchop2-creator/mercury-tools-staging",
+  "branch": "main",
+  "environment": "production-release",
+  "inspector": {
+    "interface_version": 2,
+    "path": "src/mercury_release_control/surface_inspector.py",
+    "sha256": "94f3bfa679e021213fa1103346925f6ba24691d9a8a3f3ee402f8a93568caa0f"
+  },
+  "immutable_releases_required": true,
+  "release_tag_ruleset": {
+    "bypass_actors": [],
+    "conditions": {
+      "ref_name": {
+        "exclude": [],
+        "include": ["refs/tags/v0.3.0"]
+      }
+    },
+    "enforcement": "active",
+    "name": "Mercury v0.3.0 immutable release tag",
+    "rules": [{"type": "deletion"}, {"type": "update"}],
+    "target": "tag"
+  },
+  "required_reviewer_ids": [240973204],
+  "required_environment_secrets": [
+    "FLOWACCOUNT_SANDBOX_CLIENT_ID",
+    "FLOWACCOUNT_SANDBOX_CLIENT_SECRET",
+    "MERCURY_PUBLIC_MCP_TOKEN",
+    "MERCURY_STAGING_REPOSITORY_TOKEN",
+    "MERCURY_TARGET_REPOSITORY_READ_TOKEN",
+    "MERCURY_TARGET_REPOSITORY_TOKEN",
+    "MERCURY_TARGET_WORKFLOW_DISPATCH_TOKEN",
+    "RELEASE_CONTROL_PREFLIGHT_TOKEN",
+    "RENDER_API_TOKEN",
+    "SUPABASE_DB_URL"
+  ],
+  "required_environment_variables": [
+    "FLOWACCOUNT_SANDBOX_BASE_URL",
+    "MERCURY_MARKETPLACE_SNAPSHOT_URL",
+    "MERCURY_PUBLIC_MCP_URL",
+    "RENDER_API_URL",
+    "RENDER_OWNER_ID",
+    "RENDER_SERVICE_ID",
+    "STAGING_REPOSITORY",
+    "SUPABASE_URL",
+    "TARGET_REPOSITORY"
+  ],
+  "required_status_checks": [
+    {
+      "app_id": 15368,
+      "context": "Mercury release-control v2 CI / required"
+    }
+  ],
+  "forbidden_repository_secrets": [
+    "FLOWACCOUNT_SANDBOX_CLIENT_ID",
+    "FLOWACCOUNT_SANDBOX_CLIENT_SECRET",
+    "MERCURY_PUBLIC_MCP_TOKEN",
+    "MERCURY_STAGING_REPOSITORY_TOKEN",
+    "MERCURY_TARGET_REPOSITORY_READ_TOKEN",
+    "MERCURY_TARGET_REPOSITORY_TOKEN",
+    "MERCURY_TARGET_WORKFLOW_DISPATCH_TOKEN",
+    "MERCURY_TOOLS_HTTP_BEARER_TOKEN",
+    "RELEASE_CONTROL_PREFLIGHT_TOKEN",
+    "RENDER_API_TOKEN",
+    "SUPABASE_DB_URL",
+    "SUPABASE_SERVICE_ROLE_KEY"
+  ],
+  "supabase": {
+    "project_ref": "vbnlkqvauqwnjbxngkas",
+    "migration_id": "20260719120000",
+    "migration_history_sha256": "324cff822a5a4d8e4a2554fa875471dec2345676fe8768c8ffe7cff283ffe3fb",
+    "tables": [
+      "erp_action_catalog",
+      "erp_action_observations",
+      "erp_action_validation_knowledge",
+      "erp_action_versions",
+      "erp_spec_sources",
+      "knowledge_chunks",
+      "knowledge_documents",
+      "knowledge_sources",
+      "mcp_audit_events",
+      "mercury_client_tokens",
+      "mercury_connector_profiles",
+      "mercury_product_events",
+      "mercury_skill_catalog",
+      "mercury_skill_uploads",
+      "mercury_workspace_members",
+      "mercury_workspace_skills",
+      "mercury_workspaces"
+    ],
+    "storage_buckets": [],
+    "functions": [
+      {
+        "signature": "public.jsonb_has_forbidden_validation_key(jsonb)",
+        "definition_sha256": "5daff6c305d976cd76f1a90fd3045f675ef8546e1836741aff3a65898589270b"
+      },
+      {
+        "signature": "public.jsonb_has_forbidden_validation_value(jsonb)",
+        "definition_sha256": "3c72400dbe096adebe003e3d2c68c574a739ed2ec44b3f2eb13c338a517ff015"
+      },
+      {
+        "signature": "public.jsonb_is_safe_validation_response_shape(jsonb)",
+        "definition_sha256": "5826d3ed1fb3d4988600df1e82531c60c245ec7e1d094b8386bf73a39b91cc21"
+      },
+      {
+        "signature": "public.match_knowledge_chunks(text,vector,integer,text,text,text,text,text,date,text,text,text,text,text)",
+        "definition_sha256": "2e33fb28da4138e72c26f48b63594dedf4e9929a841fbca27d95909617987206"
+      },
+      {
+        "signature": "public.mercury_capability_states_are_safe(jsonb)",
+        "definition_sha256": "e8851d39d439d1ab433492ec0690521d1b0a327741a0d1d259bfd9eeec538427"
+      },
+      {
+        "signature": "public.reject_validation_evidence_mutation()",
+        "definition_sha256": "78116567472e5c8be398e54a44e53658952f8984333efc7ed1301b93347c9e71"
+      },
+      {
+        "signature": "public.resolve_erp_action_validation_batch(jsonb,timestamp with time zone)",
+        "definition_sha256": "0ae50b4029b2b97751458b00075fdf2eccb292b81b3433c9be6a405bc752b1ed"
+      },
+      {
+        "signature": "public.validation_label_kind(text)",
+        "definition_sha256": "1203db7191669c97fb57da20df4ee11ccf58ad49fafc394d94e67b52b84961f6"
+      },
+      {
+        "signature": "public.validation_text_has_forbidden_value(text)",
+        "definition_sha256": "876d6eca70d066379c29c46d226d67e3a876536dcdf571302fe5f20f99193a27"
+      },
+      {
+        "signature": "public.validation_text_has_label_assignment_contamination(text)",
+        "definition_sha256": "89ba0c3a67fec2043a585a31d725ddc1514567263db7640798357717a48a23b5"
+      },
+      {
+        "signature": "public.validation_text_has_safe_label_assignment(text)",
+        "definition_sha256": "534521773977fe6dcea308ec02c4f3ce42ca2c2b4f3c6536325400eeae38d252"
+      }
+    ],
+    "schema_sha256": "2790a55ffa796eb1396fae6672d1a81120fa758080e29899811da1f1f53a39d6"
+  },
+  "release": {"tag": "v0.3.0", "version": "0.3.0"},
+  "staging": {
+    "repository": "natthaphonchop2-creator/mercury-tools-staging",
+    "tag_prefix": "v0.3.0-rc."
+  },
+  "provider_expectations": {
+    "flowaccount_environment": "sandbox",
+    "hosted_tool_count": 24,
+    "catalog_action_count": 254,
+    "supabase_table_count": 17,
+    "supabase_function_count": 11
+  }
+}
+"""
+)
+BASE_REQUIRED_FILES = frozenset(
     {
         ".github/workflows/attest-v0.2.2.yml",
-        ".github/workflows/attest-v0.3.0.yml",
         ".github/workflows/ci.yml",
         ".github/workflows/guardian.yml",
-        ".github/workflows/migrate-v0.3.0.yml",
         ".github/workflows/publish-v0.2.2.yml",
-        ".github/workflows/publish-v0.3.0.yml",
         ".gitignore",
         "LICENSE",
         "README.md",
         MANIFEST_PATH,
         "policy-v0.2.2.json",
-        "policy-v0.3.0.json",
         "pyproject.toml",
         "src/mercury_release_control/__init__.py",
         "src/mercury_release_control/guardian.py",
-        "src/mercury_release_control/production_migration.py",
         "src/mercury_release_control/release_profile.py",
         "uv.lock",
     }
 )
+V030_MARKER_FILES = frozenset(
+    {
+        ".github/workflows/attest-v0.3.0.yml",
+        ".github/workflows/migrate-v0.3.0.yml",
+        ".github/workflows/publish-v0.3.0.yml",
+        "policy-v0.3.0.json",
+        "src/mercury_release_control/production_migration.py",
+    }
+)
+REQUIRED_FILES = BASE_REQUIRED_FILES | V030_MARKER_FILES | set(V030_TRUSTED_FILE_SHA256)
 _ACTION_PIN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
@@ -86,7 +298,9 @@ def build_manifest_payload(files: Mapping[str, bytes]) -> dict[str, object]:
 
 def verify_candidate_archive(archive_bytes: bytes) -> GuardianReceipt:
     files = _read_candidate_archive(archive_bytes)
-    if not REQUIRED_FILES.issubset(files):
+    v030_present = bool(V030_MARKER_FILES.intersection(files))
+    required_files = REQUIRED_FILES if v030_present else BASE_REQUIRED_FILES
+    if not required_files.issubset(files):
         raise GuardianError("candidate_inventory_invalid")
     _reject_forbidden_paths(files)
     _reject_secret_assignments(files)
@@ -102,7 +316,9 @@ def verify_candidate_archive(archive_bytes: bytes) -> GuardianReceipt:
         for value in declared.values()
     ):
         raise GuardianError("candidate_manifest_invalid")
-    for version in ("0.2.2", "0.3.0"):
+    _validate_trusted_v030_files(files, v030_present=v030_present)
+    versions = ("0.2.2", "0.3.0") if v030_present else ("0.2.2",)
+    for version in versions:
         _validate_policy(files[f"policy-v{version}.json"], version=version)
     for path, content in files.items():
         if path.startswith(".github/workflows/"):
@@ -207,6 +423,17 @@ def _reject_secret_assignments(files: Mapping[str, bytes]) -> None:
             raise GuardianError("candidate_secret_detected")
 
 
+def _validate_trusted_v030_files(
+    files: Mapping[str, bytes], *, v030_present: bool
+) -> None:
+    if not v030_present:
+        return
+    for path, expected_sha256 in V030_TRUSTED_FILE_SHA256.items():
+        content = files.get(path)
+        if content is None or hashlib.sha256(content).hexdigest() != expected_sha256:
+            raise GuardianError("candidate_trusted_file_hash_invalid")
+
+
 def _strict_json(content: bytes, code: str) -> Mapping[str, object]:
     def pairs(items: list[tuple[str, object]]) -> dict[str, object]:
         payload: dict[str, object] = {}
@@ -230,6 +457,8 @@ def _strict_json(content: bytes, code: str) -> Mapping[str, object]:
 def _validate_policy(content: bytes, *, version: str) -> None:
     profile = release_profile(version)
     policy = _strict_json(content, "candidate_policy_invalid")
+    if version == "0.3.0" and dict(policy) != V030_EXPECTED_POLICY:
+        raise GuardianError("candidate_policy_invalid")
     release = policy.get("release")
     staging = policy.get("staging")
     expectations = policy.get("provider_expectations")
@@ -351,10 +580,36 @@ def _validate_migration_workflow(workflow: Mapping[str, object], text: str) -> N
         "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7",
         "git/ref/heads/main",
         "PGSSLROOTCERT",
+        "RELEASE_CONTROL_PREFLIGHT_TOKEN",
+        "mercury_release_control.workflow preflight",
         "mercury_release_control.production_migration",
     )
     jobs = workflow.get("jobs")
     concurrency = workflow.get("concurrency")
+    migrate_job = jobs.get("migrate") if isinstance(jobs, Mapping) else None
+    steps = migrate_job.get("steps") if isinstance(migrate_job, Mapping) else None
+    preflight_steps = (
+        [
+            step
+            for step in steps
+            if isinstance(step, Mapping)
+            and step.get("name") == "Verify GitHub identities and protected release environment"
+        ]
+        if isinstance(steps, list)
+        else []
+    )
+    migration_steps = (
+        [
+            step
+            for step in steps
+            if isinstance(step, Mapping) and step.get("name") == "Run trusted production migration"
+        ]
+        if isinstance(steps, list)
+        else []
+    )
+    preflight = preflight_steps[0] if len(preflight_steps) == 1 else None
+    preflight_run = preflight.get("run") if isinstance(preflight, Mapping) else None
+    preflight_env = preflight.get("env") if isinstance(preflight, Mapping) else None
     if (
         workflow.get("on") != expected_on
         or not isinstance(jobs, Mapping)
@@ -369,6 +624,16 @@ def _validate_migration_workflow(workflow: Mapping[str, object], text: str) -> N
             "cancel-in-progress": "false",
             "group": "mercury-v0.3.0-production-migration",
         }
+        or len(migration_steps) != 1
+        or not isinstance(steps, list)
+        or preflight is None
+        or steps.index(preflight) >= steps.index(migration_steps[0])
+        or preflight_env
+        != {"RELEASE_CONTROL_PREFLIGHT_TOKEN": ("${{ secrets.RELEASE_CONTROL_PREFLIGHT_TOKEN }}")}
+        or not isinstance(preflight_run, str)
+        or "--policy policy-v0.3.0.json" not in preflight_run
+        or ('--output "$RUNNER_TEMP/mercury-migration/preflight.json"' not in preflight_run)
+        or "cat " in preflight_run
         or any(marker not in text for marker in expected_markers)
         or "actions/upload-artifact" in text
         or "actions/download-artifact" in text

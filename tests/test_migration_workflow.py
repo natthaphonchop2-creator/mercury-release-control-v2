@@ -116,6 +116,26 @@ def test_migration_workflow_pins_ca_and_exports_pgsslrootcert() -> None:
     assert "python -m mercury_release_control.production_migration" in migrate["run"]
 
 
+def test_migration_workflow_runs_trusted_preflight_before_database_migration() -> None:
+    workflow = _workflow()
+    steps = workflow["jobs"]["migrate"]["steps"]
+    names = [step["name"] for step in steps]
+    preflight = next(
+        step
+        for step in steps
+        if step["name"] == "Verify GitHub identities and protected release environment"
+    )
+
+    assert names.index(preflight["name"]) < names.index("Run trusted production migration")
+    assert preflight["env"] == {
+        "RELEASE_CONTROL_PREFLIGHT_TOKEN": ("${{ secrets.RELEASE_CONTROL_PREFLIGHT_TOKEN }}")
+    }
+    assert "python -m mercury_release_control.workflow preflight" in preflight["run"]
+    assert "--policy policy-v0.3.0.json" in preflight["run"]
+    assert '--output "$RUNNER_TEMP/mercury-migration/preflight.json"' in preflight["run"]
+    assert "cat " not in preflight["run"]
+
+
 def test_migration_workflow_emits_no_artifact_or_secret_material() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8") if WORKFLOW_PATH.is_file() else ""
 
@@ -124,5 +144,6 @@ def test_migration_workflow_emits_no_artifact_or_secret_material() -> None:
     assert "GITHUB_OUTPUT" not in text
     assert "SUPABASE_DB_URL=" not in text
     assert "echo $SUPABASE" not in text
+    assert "cat $RUNNER_TEMP/mercury-migration/preflight.json" not in text
     assert "set -x" not in text
     assert "pull_request" not in text

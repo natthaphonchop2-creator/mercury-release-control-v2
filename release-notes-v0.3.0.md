@@ -24,3 +24,8 @@ The release control plane now includes a manual, environment-approved production
 migration runner. It remains unapplied by this commit; provider attestation must
 continue to fail until independently reviewed migration and deployment evidence
 are present.
+
+The migration path now reruns the protected GitHub preflight before database
+access. Trusted Guardian constants pin the privileged runner, workflow, policy,
+runtime import closure, and locked dependencies, so a candidate cannot authorize
+tampering by regenerating its own control manifest.

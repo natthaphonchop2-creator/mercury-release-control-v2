@@ -13,9 +13,12 @@ environment.
 
 The manual `migrate-v0.3.0.yml` workflow is the only trusted production schema
 mutation path for this release. It binds an approved Mercury main commit to one
-checksum-pinned migration, verifies the exact pre-migration history and schema
-footprint, runs one locked transaction, and validates the resulting security
-boundary before commit. A configured GitHub control plane does not imply that
+checksum-pinned migration, reruns the protected GitHub preflight before database
+access, verifies the exact pre-migration history and schema footprint, runs one
+locked transaction, and validates the resulting security boundary before commit.
+The trusted Guardian also pins the privileged workflow, runner, policy, import
+closure, and dependency lock independently of the candidate manifest. A configured
+GitHub control plane does not imply that
 the provider migration or deployment has completed; hosted attestation checks
 those states independently.
 
