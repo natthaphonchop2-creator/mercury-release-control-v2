@@ -66,6 +66,9 @@ PROCESS_TIMEOUT_SECONDS = 600.0
 INSPECTION_TIMEOUT_SECONDS = 75 * 60.0
 DATABASE_TIMEOUT_SECONDS = 15
 OUTPUT_MAX_BYTES = 2 * 1024 * 1024
+_TRUSTED_GITLEAKS_CONFIG_SHA256 = (
+    "663510fb05b8b6e58c3d8634364f52bfc03614cf00d0f6985203a03d473dd68f"
+)
 
 TRUSTED_SURFACES = (
     "git_all_refs",
@@ -1091,12 +1094,45 @@ def _require_scanner_versions(environment: Mapping[str, str], home: Path) -> tup
     return binaries[0], binaries[1]
 
 
+def _materialize_trusted_gitleaks_config(
+    root: Path,
+    *,
+    clone: Path,
+    reviewed_sha: str,
+    environment: Mapping[str, str],
+) -> Path:
+    if _SHA_RE.fullmatch(reviewed_sha) is None:
+        raise InspectionError("gitleaks_config_invalid")
+    content = _run_capture(
+        (
+            environment["INSPECTOR_GIT"],
+            "show",
+            f"{reviewed_sha}:.gitleaks.toml",
+        ),
+        cwd=clone,
+        environment=environment,
+    )
+    if hashlib.sha256(content).hexdigest() != _TRUSTED_GITLEAKS_CONFIG_SHA256:
+        raise InspectionError("gitleaks_config_invalid")
+    destination = root / "gitleaks.toml"
+    try:
+        descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError as exc:
+        raise InspectionError("gitleaks_config_invalid") from exc
+    return destination
+
+
 def _scan_git(
     clone: Path,
     *,
     log_options: str,
     gitleaks: Path,
     trufflehog: Path,
+    gitleaks_config: Path,
     environment: Mapping[str, str],
 ) -> list[str]:
     git_path = _absolute_executable(
@@ -1114,6 +1150,7 @@ def _scan_git(
             "--no-banner",
             "--redact",
             "--exit-code=1",
+            f"--config={gitleaks_config}",
             f"--log-opts={log_options}",
             str(clone),
         ),
@@ -1753,11 +1790,18 @@ def _inspect_git_and_staging(
             token=environment_values["MERCURY_TARGET_REPOSITORY_READ_TOKEN"],
             environment=process_environment,
         )
+        gitleaks_config = _materialize_trusted_gitleaks_config(
+            temporary_root,
+            clone=clone,
+            reviewed_sha=reviewed_sha,
+            environment=process_environment,
+        )
         all_hashes = _scan_git(
             clone,
             log_options="--all",
             gitleaks=gitleaks,
             trufflehog=trufflehog,
+            gitleaks_config=gitleaks_config,
             environment=process_environment,
         )
         pull_refs = _git_output(
@@ -1783,6 +1827,7 @@ def _inspect_git_and_staging(
                     log_options=ref,
                     gitleaks=gitleaks,
                     trufflehog=trufflehog,
+                    gitleaks_config=gitleaks_config,
                     environment=process_environment,
                 )
             )
