@@ -2703,6 +2703,25 @@ def _render_log_url(
     return f"{render_base.rstrip('/')}/logs?{query}"
 
 
+def _render_deployments(payload: object) -> list[Mapping[str, object]]:
+    if not isinstance(payload, list) or len(payload) > MAX_HTTP_OBJECTS:
+        raise InspectionError("render_deployment_invalid")
+    deployments: list[Mapping[str, object]] = []
+    for row in payload:
+        envelope = _require_mapping(row, "render_deployment_invalid")
+        if "deploy" not in envelope or set(envelope) - {"cursor", "deploy"}:
+            raise InspectionError("render_deployment_invalid")
+        cursor = envelope.get("cursor")
+        if cursor is not None and (
+            not isinstance(cursor, str) or not cursor or len(cursor) > 1024 or "\0" in cursor
+        ):
+            raise InspectionError("render_deployment_invalid")
+        deployments.append(
+            _require_mapping(envelope.get("deploy"), "render_deployment_invalid")
+        )
+    return deployments
+
+
 def _inspect_render_and_public_mcp(
     *,
     environment: Mapping[str, str],
@@ -2736,9 +2755,9 @@ def _inspect_render_and_public_mcp(
         code="render_deployment_query_failed",
         budget=budget,
     )
-    deployment_rows = _parse_json_bytes(deployments.body, "render_deployment_invalid")
-    if not isinstance(deployment_rows, list) or len(deployment_rows) > MAX_HTTP_OBJECTS:
-        raise InspectionError("render_deployment_invalid")
+    deployment_rows = _render_deployments(
+        _parse_json_bytes(deployments.body, "render_deployment_invalid")
+    )
     bound_deploy = False
     for row in deployment_rows:
         deployment = _require_mapping(row, "render_deployment_invalid")

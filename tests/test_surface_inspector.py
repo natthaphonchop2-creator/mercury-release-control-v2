@@ -79,6 +79,47 @@ def test_surface_inspector_binds_render_to_v030_and_reviewed_commit() -> None:
         )
 
 
+def test_render_deployments_unwrap_official_cursor_envelopes() -> None:
+    reviewed_sha = "a" * 40
+
+    deployments = inspector._render_deployments(
+        [
+            {
+                "cursor": "next-page-cursor",
+                "deploy": {
+                    "commit": {"id": reviewed_sha, "message": "release"},
+                    "id": "dep-d9fudtu1a83c73e50o70",
+                    "status": "live",
+                },
+            }
+        ]
+    )
+
+    assert deployments == [
+        {
+            "commit": {"id": reviewed_sha, "message": "release"},
+            "id": "dep-d9fudtu1a83c73e50o70",
+            "status": "live",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        [{"commit": {"id": "a" * 40}, "id": "dep-flat", "status": "live"}],
+        [{"cursor": "", "deploy": {"id": "dep-empty-cursor"}}],
+        [{"cursor": 1, "deploy": {"id": "dep-numeric-cursor"}}],
+        [{"cursor": "cursor", "deploy": {"id": "dep-extra"}, "unexpected": True}],
+    ),
+)
+def test_render_deployments_reject_malformed_cursor_envelopes(
+    payload: list[object],
+) -> None:
+    with pytest.raises(InspectionError, match="^render_deployment_invalid$"):
+        inspector._render_deployments(payload)
+
+
 def _valid_environment() -> dict[str, str]:
     return {
         "FLOWACCOUNT_SANDBOX_BASE_URL": "https://openapi.flowaccount.com/test",

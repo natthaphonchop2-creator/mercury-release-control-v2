@@ -467,10 +467,18 @@ def _tool_payload(result: Mapping[str, object]) -> dict[str, object]:
 
 
 def _live_deploy(row: object, reviewed_sha: str) -> bool:
-    if not isinstance(row, dict) or row.get("status") != "live":
+    if not isinstance(row, dict) or "deploy" not in row or set(row) - {"cursor", "deploy"}:
         return False
-    commit = row.get("commit")
-    observed = commit.get("id") if isinstance(commit, dict) else row.get("commitId")
+    cursor = row.get("cursor")
+    if cursor is not None and (
+        not isinstance(cursor, str) or not cursor or len(cursor) > 1024 or "\0" in cursor
+    ):
+        return False
+    deploy = row.get("deploy")
+    if not isinstance(deploy, dict) or deploy.get("status") != "live":
+        return False
+    commit = deploy.get("commit")
+    observed = commit.get("id") if isinstance(commit, dict) else deploy.get("commitId")
     return observed == reviewed_sha
 
 
