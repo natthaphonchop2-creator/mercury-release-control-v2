@@ -353,6 +353,12 @@ def test_github_rest_api_reconstructs_and_verifies_remote_public_tree(
                     "type": "blob",
                 },
                 {
+                    "mode": "040000",
+                    "path": "bin",
+                    "sha": "e" * 40,
+                    "type": "tree",
+                },
+                {
                     "mode": "100755",
                     "path": "bin/run",
                     "sha": _blob_sha(contents["bin/run"]),
@@ -386,3 +392,20 @@ def test_github_rest_api_reconstructs_and_verifies_remote_public_tree(
         tag_object_sha=tag_object_sha,
         tree_digest=tree_digest,
     )
+
+
+def test_github_rest_api_rejects_noncanonical_remote_directory_mode() -> None:
+    api = GitHubRestApi(token=SecretStr("github-secret"))
+
+    with pytest.raises(StagingError, match="^staging_remote_invalid$"):
+        api._remote_snapshot(
+            "example/mercury-tools-staging",
+            [
+                {
+                    "mode": "100644",
+                    "path": "bin",
+                    "sha": "e" * 40,
+                    "type": "tree",
+                }
+            ],
+        )
