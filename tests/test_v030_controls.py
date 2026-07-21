@@ -119,7 +119,7 @@ def test_committed_v030_policy_is_configured_without_claiming_provider_readiness
     assert policy["supabase"]["migration_id"] == "20260719120000"
     assert (
         policy["supabase"]["migration_history_sha256"]
-        == "324cff822a5a4d8e4a2554fa875471dec2345676fe8768c8ffe7cff283ffe3fb"
+        == "efc2b2ece5efa30008b7fb86097f43b205abb057acf4e2b470767555fc463db7"
     )
 
 
