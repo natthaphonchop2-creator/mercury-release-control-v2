@@ -26,6 +26,7 @@ def policy() -> dict[str, object]:
         },
         "repository": "example/mercury-release-control-v2",
         "repository_id": 42,
+        "release": {"tag": "v0.3.0", "version": "0.3.0"},
         "required_environment_secrets": ["RENDER_API_TOKEN", "SUPABASE_DB_URL"],
         "required_environment_variables": ["TARGET_REPOSITORY"],
         "required_reviewer_ids": [1001],
@@ -43,7 +44,7 @@ def _snapshot(policy: dict[str, object]) -> dict[str, object]:
             "branch_protection": {
                 "enforce_admins": True,
                 "protected": True,
-                "required_approving_review_count": 1,
+                "required_approving_review_count": 0,
                 "required_status_checks": policy["required_status_checks"],
                 "required_status_checks_strict": True,
             },
@@ -54,7 +55,7 @@ def _snapshot(policy: dict[str, object]) -> dict[str, object]:
                     "protected_branches": True,
                 },
                 "name": "production-release",
-                "prevent_self_review": True,
+                "prevent_self_review": False,
                 "reviewer_ids": [1001],
             },
             "environment_secrets": policy["required_environment_secrets"],
@@ -91,7 +92,7 @@ def test_preflight_returns_only_sanitized_protection_receipt(
     assert receipt.target_repository_id == 84
     assert receipt.environment == "production-release"
     assert receipt.required_reviewers == 1
-    assert receipt.prevent_self_review is True
+    assert receipt.prevent_self_review is False
     assert receipt.admin_bypass_disabled is True
     assert receipt.protected_branch_only is True
     encoded = receipt.model_dump_json()
@@ -111,7 +112,7 @@ def test_preflight_returns_only_sanitized_protection_receipt(
             "target_repository_identity_invalid",
         ),
         (
-            lambda snapshot: snapshot["control"]["environment"].update(prevent_self_review=False),
+            lambda snapshot: snapshot["control"]["environment"].update(prevent_self_review=True),
             "control_environment_protection_invalid",
         ),
         (
@@ -126,3 +127,17 @@ def test_preflight_fails_closed(policy: dict[str, object], mutation, code: str) 
 
     with pytest.raises(PreflightError, match=f"^{code}$"):
         validate_preflight(policy, snapshot)
+
+
+def test_preflight_preserves_v022_independent_reviewer_mode(
+    policy: dict[str, object],
+) -> None:
+    policy["release"] = {"tag": "v0.2.2", "version": "0.2.2"}
+    snapshot = _snapshot(policy)
+    snapshot["control"]["branch_protection"]["required_approving_review_count"] = 1
+    snapshot["control"]["environment"]["prevent_self_review"] = True
+
+    receipt = validate_preflight(policy, snapshot)
+
+    assert receipt.prevent_self_review is True
+    assert receipt.required_reviewers == 1

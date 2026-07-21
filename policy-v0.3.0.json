@@ -37,7 +37,7 @@
     "target": "tag"
   },
   "required_reviewer_ids": [
-    240973204
+    284163704
   ],
   "required_environment_secrets": [
     "FLOWACCOUNT_SANDBOX_CLIENT_ID",
@@ -65,7 +65,11 @@
   "required_status_checks": [
     {
       "app_id": 15368,
-      "context": "Mercury release-control v2 CI / required"
+      "context": "required"
+    },
+    {
+      "app_id": 15368,
+      "context": "verify-candidate-as-data"
     }
   ],
   "forbidden_repository_secrets": [

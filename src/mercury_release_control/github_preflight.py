@@ -89,7 +89,9 @@ def collect_remote_snapshot(
             raise PreflightError("github_ruleset_inventory_invalid")
         matched_rulesets.append({key: ruleset.get(key) for key in _RULESET_FIELDS})
     enforce_admins = _mapping(control_protection.get("enforce_admins"))
-    pull_reviews = _mapping(control_protection.get("required_pull_request_reviews"))
+    required_review_count = _required_review_count(
+        control_protection.get("required_pull_request_reviews")
+    )
     status_checks = _mapping(control_protection.get("required_status_checks"))
     checks = status_checks.get("checks")
     if not isinstance(checks, list) or len(checks) > 100:
@@ -106,9 +108,7 @@ def collect_remote_snapshot(
             "branch_protection": {
                 "enforce_admins": enforce_admins.get("enabled"),
                 "protected": True,
-                "required_approving_review_count": pull_reviews.get(
-                    "required_approving_review_count"
-                ),
+                "required_approving_review_count": required_review_count,
                 "required_status_checks": sorted(
                     normalized_checks, key=lambda item: str(item["context"])
                 ),
@@ -199,6 +199,16 @@ def _prevent_self_review(environment: Mapping[str, object]) -> bool:
     ):
         raise PreflightError("github_environment_invalid")
     return reviewer_rules[0]["prevent_self_review"]
+
+
+def _required_review_count(value: object) -> int:
+    if value is None:
+        return 0
+    payload = _mapping(value)
+    count = payload.get("required_approving_review_count")
+    if isinstance(count, bool) or not isinstance(count, int) or not 0 < count <= 100:
+        raise PreflightError("github_branch_protection_invalid")
+    return count
 
 
 def _inventory(raw: object, key: str) -> list[str]:

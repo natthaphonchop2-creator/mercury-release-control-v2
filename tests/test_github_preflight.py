@@ -42,7 +42,7 @@ class FakeGitHub:
                 "name": "production-release",
                 "protection_rules": [
                     {
-                        "prevent_self_review": True,
+                        "prevent_self_review": False,
                         "reviewers": [{"reviewer": {"id": 1001}}],
                         "type": "required_reviewers",
                     }
@@ -50,12 +50,12 @@ class FakeGitHub:
             },
             "/repos/example/control/branches/main/protection": {
                 "enforce_admins": {"enabled": True},
-                "required_pull_request_reviews": {"required_approving_review_count": 1},
+                "required_pull_request_reviews": None,
                 "required_status_checks": {
                     "checks": [
                         {
                             "app_id": 15368,
-                            "context": "Mercury release-control v2 CI / required",
+                            "context": "required",
                         }
                     ],
                     "strict": True,
@@ -96,7 +96,8 @@ def test_remote_snapshot_collects_only_preflight_fields() -> None:
     snapshot = collect_remote_snapshot(_policy(), FakeGitHub())
 
     assert snapshot["control"]["repository"]["id"] == 42
-    assert snapshot["control"]["environment"]["prevent_self_review"] is True
+    assert snapshot["control"]["environment"]["prevent_self_review"] is False
+    assert snapshot["control"]["branch_protection"]["required_approving_review_count"] == 0
     assert snapshot["control"]["environment"]["reviewer_ids"] == [1001]
     assert snapshot["target"]["repository"]["id"] == 84
     assert snapshot["target"]["release_tag_rulesets"][0]["target"] == "tag"

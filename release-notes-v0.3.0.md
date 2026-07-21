@@ -29,3 +29,8 @@ The migration path now reruns the protected GitHub preflight before database
 access. Trusted Guardian constants pin the privileged runner, workflow, policy,
 runtime import closure, and locked dependencies, so a candidate cannot authorize
 tampering by regenerating its own control manifest.
+
+The v0.3 control plane declares a solo-maintainer governance profile. Pull requests
+must pass both the strict `required` CI check and `verify-candidate-as-data` Trusted
+Guardian check. Production operations still require a protected-environment review
+by the primary repository owner, while administrator bypass remains disabled.
