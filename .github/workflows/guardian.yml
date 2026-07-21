@@ -1,0 +1,41 @@
+name: Trusted Candidate Guardian
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  verify-candidate-as-data:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted base only
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Install uv 0.11.9
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081
+        with:
+          version: 0.11.9
+      - name: Install trusted base dependencies
+        run: uv sync --group dev --frozen
+      - name: Download candidate archive as untrusted bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          umask 077
+          gh api "/repos/$GITHUB_REPOSITORY/tarball/$HEAD_SHA" >candidate.tar.gz
+      - name: Verify candidate without importing or executing it
+        run: >-
+          uv run python -m mercury_release_control.guardian verify
+          --candidate candidate.tar.gz
