@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import pytest
+
 from mercury_release_control.github_preflight import collect_remote_snapshot
+from mercury_release_control.preflight import PreflightError
 
 
 def _policy() -> dict[str, object]:
     return {
         "branch": "main",
         "environment": "production-release",
-        "release_tag_ruleset": {"name": "Mercury v0.2.2 immutable release tag"},
+        "release_tag_ruleset": {"name": "Mercury v0.3.0 immutable release tag"},
         "repository": "example/control",
         "repository_id": 42,
         "reviewed_repository": "example/target",
@@ -37,9 +40,9 @@ class FakeGitHub:
                     "protected_branches": True,
                 },
                 "name": "production-release",
-                "prevent_self_review": True,
                 "protection_rules": [
                     {
+                        "prevent_self_review": False,
                         "reviewers": [{"reviewer": {"id": 1001}}],
                         "type": "required_reviewers",
                     }
@@ -47,12 +50,12 @@ class FakeGitHub:
             },
             "/repos/example/control/branches/main/protection": {
                 "enforce_admins": {"enabled": True},
-                "required_pull_request_reviews": {"required_approving_review_count": 1},
+                "required_pull_request_reviews": None,
                 "required_status_checks": {
                     "checks": [
                         {
                             "app_id": 15368,
-                            "context": "Mercury release-control v2 CI / required",
+                            "context": "required",
                         }
                     ],
                     "strict": True,
@@ -68,19 +71,19 @@ class FakeGitHub:
             "/repos/example/control/actions/secrets?per_page=100": {"secrets": []},
             "/repos/example/target/actions/secrets?per_page=100": {"secrets": []},
             "/repos/example/target/rulesets?per_page=100": [
-                {"id": 9, "name": "Mercury v0.2.2 immutable release tag"}
+                {"id": 9, "name": "Mercury v0.3.0 immutable release tag"}
             ],
             "/repos/example/target/rulesets/9": {
                 "bypass_actors": [],
                 "conditions": {
                     "ref_name": {
                         "exclude": [],
-                        "include": ["refs/tags/v0.2.2"],
+                        "include": ["refs/tags/v0.3.0"],
                     }
                 },
                 "enforcement": "active",
                 "id": 9,
-                "name": "Mercury v0.2.2 immutable release tag",
+                "name": "Mercury v0.3.0 immutable release tag",
                 "rules": [{"type": "deletion"}],
                 "target": "tag",
             },
@@ -93,7 +96,31 @@ def test_remote_snapshot_collects_only_preflight_fields() -> None:
     snapshot = collect_remote_snapshot(_policy(), FakeGitHub())
 
     assert snapshot["control"]["repository"]["id"] == 42
+    assert snapshot["control"]["environment"]["prevent_self_review"] is False
+    assert snapshot["control"]["branch_protection"]["required_approving_review_count"] == 0
     assert snapshot["control"]["environment"]["reviewer_ids"] == [1001]
     assert snapshot["target"]["repository"]["id"] == 84
     assert snapshot["target"]["release_tag_rulesets"][0]["target"] == "tag"
     assert snapshot["target"]["immutable_releases"] == {"enabled": True}
+
+
+def test_remote_snapshot_rejects_missing_nested_prevent_self_review() -> None:
+    github = FakeGitHub()
+    original_get = github.get
+
+    def get(path: str):
+        response = original_get(path)
+        if path == "/repos/example/control/environments/production-release":
+            response = dict(response)
+            response["protection_rules"] = [
+                {
+                    "reviewers": [{"reviewer": {"id": 1001}}],
+                    "type": "required_reviewers",
+                }
+            ]
+        return response
+
+    github.get = get  # type: ignore[method-assign]
+
+    with pytest.raises(PreflightError, match="^github_environment_invalid$"):
+        collect_remote_snapshot(_policy(), github)

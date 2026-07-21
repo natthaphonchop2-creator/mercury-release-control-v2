@@ -46,7 +46,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "a8efdc960dadcabae052dd4f0b80d5f5e1b3bf87175527c04a4201b4d2d8ff16"
     ),
     "policy-v0.2.2.json": "e02c0b26e92fe942eed931ce026227ceb8c1f12642c0b43b0ae6c12469702bf3",
-    "policy-v0.3.0.json": ("74d8344c242efa07b2dec0e48c18dd1bc18034a577e02600d6545e76ee2547f8"),
+    "policy-v0.3.0.json": ("8c8d415d9789ec278860927bab1f26041e0744ad29d70e9d9b4f0babd3c408f6"),
     "pyproject.toml": "f7ea42368cec3da102875f56dc7d70967a77b3794073e28416705d46fbc0663b",
     "src/mercury_release_control/__init__.py": (
         "735f223b0e1fe89a4515496dbec2e3dbc30218c044a9085624e5ada69af22ad9"
@@ -55,7 +55,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "389a4704b7e5cc7ac35f213b3613ceaa35d032a856e4c53d43f07257ca110962"
     ),
     "src/mercury_release_control/github_preflight.py": (
-        "8e8b595411bdf7f79cde04147fbf14eee1b4f28f44902ee0e549bb8ac7c27612"
+        "28c7e8340eb691961c2393133cd0e7b6738d404f936ab42ffe5bb1f0535092b4"
     ),
     "src/mercury_release_control/github_publication.py": (
         "27fc391aea9e8301b51a4793e9d11b95c2d5065974495765fcfca720ab1bc626"
@@ -67,7 +67,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "4f1e7d92ba3e8b94b0cc8f60ef0b8dbb182771c3b98afe3266f9b7d9a8f707ff"
     ),
     "src/mercury_release_control/preflight.py": (
-        "1e6530b020ef216cdd61736821bfb911e6042927d5213fe582ec474b2f964644"
+        "52dde96c3954c8cbe1415758fbafbc0977968d9dc8817c7565e993b58c406a32"
     ),
     "src/mercury_release_control/production_migration.py": (
         "627d935af36fc612e7c2a19e1f329fb9d3ec0a42faf3df08e620b57b67a2e1ed"
@@ -85,7 +85,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "d08e2df80c9301708f978a117a7581902239b6bb2e32bbf8013d759522577dba"
     ),
     "src/mercury_release_control/release_profile.py": (
-        "11db6ea33f0996d6f5103faf451dff60087a5def2f27ebb6e49c7f6c11001976"
+        "57e43c24eb370a16034404207b8b7155344192608c7fcf418bb4f615dcbd022d"
     ),
     "src/mercury_release_control/staging.py": (
         "fc8dcb856b0f5d0ac0c9355c5f1ca4edda4a0e6a6e84ec7dad302aace59c301e"
@@ -131,7 +131,7 @@ V030_EXPECTED_POLICY: Mapping[str, object] = json.loads(
     "rules": [{"type": "deletion"}, {"type": "update"}],
     "target": "tag"
   },
-  "required_reviewer_ids": [240973204],
+  "required_reviewer_ids": [284163704],
   "required_environment_secrets": [
     "FLOWACCOUNT_SANDBOX_CLIENT_ID",
     "FLOWACCOUNT_SANDBOX_CLIENT_SECRET",
@@ -158,7 +158,11 @@ V030_EXPECTED_POLICY: Mapping[str, object] = json.loads(
   "required_status_checks": [
     {
       "app_id": 15368,
-      "context": "Mercury release-control v2 CI / required"
+      "context": "required"
+    },
+    {
+      "app_id": 15368,
+      "context": "verify-candidate-as-data"
     }
   ],
   "forbidden_repository_secrets": [

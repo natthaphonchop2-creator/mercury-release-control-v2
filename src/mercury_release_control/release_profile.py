@@ -97,6 +97,8 @@ class ReleaseProfile:
     migration_id: str
     hosted_tool_names: frozenset[str]
     supabase_function_signatures: tuple[str, ...]
+    required_approving_review_count: int
+    prevent_self_review: bool
     catalog_action_count: int = 254
     supabase_table_count: int = 17
 
@@ -141,6 +143,8 @@ _PROFILES = {
         migration_id="20260716100000",
         hosted_tool_names=_V022_TOOLS,
         supabase_function_signatures=_COMMON_FUNCTIONS,
+        required_approving_review_count=1,
+        prevent_self_review=True,
     ),
     "0.3.0": ReleaseProfile(
         version="0.3.0",
@@ -154,6 +158,8 @@ _PROFILES = {
             "public.mercury_capability_states_are_safe(jsonb)",
             *_COMMON_FUNCTIONS[4:],
         ),
+        required_approving_review_count=0,
+        prevent_self_review=False,
     ),
 }
 
