@@ -33,6 +33,12 @@ _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _GIT = Path("/usr/bin/git")
 _FIXED_DATE = "2026-07-17T00:00:00Z"
+_EMPTY_REPOSITORY_RESPONSE = {
+    "documentation_url": "https://docs.github.com/rest/git/refs#get-a-reference",
+    "message": "Git Repository is empty.",
+    "status": "409",
+}
+_MAX_GITHUB_ERROR_BYTES = 16 * 1024
 
 
 class StagingError(RuntimeError):
@@ -309,6 +315,8 @@ class GitHubRestApi:
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
                 return None
+            if _is_empty_repository_conflict(exc):
+                return None
             raise StagingError("staging_github_api_failed") from exc
         except (OSError, TimeoutError, urllib.error.URLError) as exc:
             raise StagingError("staging_github_api_failed") from exc
@@ -321,6 +329,22 @@ class GitHubRestApi:
         if not isinstance(payload, dict):
             raise StagingError("staging_remote_invalid")
         return payload
+
+
+def _is_empty_repository_conflict(error: urllib.error.HTTPError) -> bool:
+    if error.code != 409:
+        return False
+    try:
+        body = error.read(_MAX_GITHUB_ERROR_BYTES + 1)
+    except (OSError, ValueError):
+        return False
+    if len(body) > _MAX_GITHUB_ERROR_BYTES:
+        return False
+    try:
+        payload = json.loads(body, object_pairs_hook=_unique_object)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return False
+    return payload == _EMPTY_REPOSITORY_RESPONSE
 
 
 def build_staging(
