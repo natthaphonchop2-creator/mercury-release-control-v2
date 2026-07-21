@@ -5,6 +5,7 @@ import importlib.util
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -407,6 +408,61 @@ def test_shared_pooler_url_identity_is_separate_from_resolved_database_role() ->
     assert url_user == "postgres.vbnlkqvauqwnjbxngkas"
 
 
+def test_connect_requires_libpq_to_confirm_client_tls(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import psycopg
+
+    connection = SimpleNamespace(pgconn=SimpleNamespace(ssl_in_use=True))
+    observed: dict[str, object] = {}
+
+    def connect(**kwargs: object) -> object:
+        observed.update(kwargs)
+        return connection
+
+    monkeypatch.setattr(psycopg, "connect", connect)
+    ca = tmp_path / "prod-ca-2021.crt"
+
+    result, database, role = migration._connect(
+        "postgresql://postgres.vbnlkqvauqwnjbxngkas:secret@"
+        "aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres?sslmode=verify-full",
+        ca,
+    )
+
+    assert result is connection
+    assert database == "postgres"
+    assert role == "postgres"
+    assert observed["sslmode"] == "verify-full"
+    assert observed["sslrootcert"] == str(ca)
+
+
+def test_connect_rejects_and_closes_when_libpq_reports_no_client_tls(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import psycopg
+
+    class Connection:
+        pgconn = SimpleNamespace(ssl_in_use=False)
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    connection = Connection()
+    monkeypatch.setattr(psycopg, "connect", lambda **_kwargs: connection)
+
+    with pytest.raises(migration.MigrationError, match="^database_tls_invalid$"):
+        migration._connect(
+            "postgresql://postgres.vbnlkqvauqwnjbxngkas:secret@"
+            "aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres?sslmode=verify-full",
+            tmp_path / "prod-ca-2021.crt",
+        )
+
+    assert connection.closed is True
+
+
 def test_postgres_session_starts_one_bounded_locked_transaction_and_checks_identity() -> None:
     calls: list[tuple[str, tuple[object, ...]]] = []
 
@@ -418,8 +474,6 @@ def test_postgres_session_starts_one_bounded_locked_transaction_and_checks_ident
             self.last = query
 
         def fetchone(self) -> tuple[object, ...]:
-            if "pg_stat_ssl" in self.last:
-                return (True,)
             assert "current_database" in self.last
             assert "session_user" not in self.last
             return ("postgres", "postgres")
@@ -448,7 +502,7 @@ def test_postgres_session_starts_one_bounded_locked_transaction_and_checks_ident
     assert any("SET LOCAL lock_timeout" in query for query in queries)
     assert any("SET LOCAL statement_timeout" in query for query in queries)
     assert any("pg_advisory_xact_lock" in query for query in queries)
-    assert any("pg_stat_ssl" in query for query in queries)
+    assert not any("pg_stat_ssl" in query for query in queries)
     assert queries.index("BEGIN") < next(
         index for index, query in enumerate(queries) if "pg_advisory_xact_lock" in query
     )
