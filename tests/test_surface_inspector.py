@@ -218,6 +218,90 @@ def test_git_scan_passes_trusted_config_only_to_gitleaks(
     assert not any(item.startswith("--config=") for item in commands[1])
 
 
+def test_staging_static_requires_exact_remote_public_mcp_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = inspector.ArchiveSnapshot(
+        tree_sha256="a" * 64,
+        static_files={
+            ".agents/plugins/marketplace.json": json.dumps(
+                {"plugins": [{"name": "mercury-finance"}]}
+            ).encode(),
+            "catalog/global/flowaccount/actions.json": b"[]",
+            "catalog/global/peak/actions.json": b"[]",
+            "plugins/mercury-finance/.codex-plugin/plugin.json": json.dumps(
+                {"name": "mercury-finance", "mcpServers": "./.mcp.json"}
+            ).encode(),
+            "plugins/mercury-finance/.mcp.json": json.dumps(
+                {
+                    "mcpServers": {
+                        "mercury-finance": {
+                            "type": "http",
+                            "url": "https://mercury.example/mcp",
+                            "note": "Mercury Accounting and ERP connector platform.",
+                        }
+                    }
+                }
+            ).encode(),
+            "src/mercury_tools/mcp/local_server.py": b"",
+        },
+    )
+    monkeypatch.setattr(
+        inspector,
+        "_static_mcp_tool_names",
+        lambda _source: tuple(sorted(inspector._EXPECTED_LOCAL_MCP_TOOLS)),
+    )
+    monkeypatch.setattr(inspector, "_static_validation_identities", lambda _snapshot: ())
+
+    assert inspector._validate_staging_static(
+        snapshot,
+        public_mcp_base_url="https://mercury.example",
+    ) == (20, ())
+
+    monkeypatch.setattr(
+        inspector,
+        "_static_mcp_tool_names",
+        lambda _source: tuple(sorted(inspector._EXPECTED_LOCAL_MCP_TOOLS - {"credential_status"})),
+    )
+    with pytest.raises(InspectionError, match="^staging_local_tool_count_invalid$"):
+        inspector._validate_staging_static(
+            snapshot,
+            public_mcp_base_url="https://mercury.example",
+        )
+
+
+@pytest.mark.parametrize(
+    "server",
+    (
+        {"command": "uvx", "args": ["mercury-tools"]},
+        {
+            "type": "http",
+            "url": "https://attacker.example/mcp",
+            "note": "wrong host",
+        },
+        {
+            "type": "http",
+            "url": "https://mercury.example/mcp?token=secret",
+            "note": "query is forbidden",
+        },
+        {
+            "type": "http",
+            "url": "https://mercury.example/mcp",
+            "note": "unexpected headers",
+            "headers": {"Authorization": "Bearer placeholder"},
+        },
+    ),
+)
+def test_staging_static_rejects_non_public_or_credential_bearing_mcp_server(
+    server: dict[str, object],
+) -> None:
+    with pytest.raises(InspectionError, match="^staging_mcp_inventory_invalid$"):
+        inspector._validate_remote_mcp_server(
+            server,
+            public_mcp_base_url="https://mercury.example",
+        )
+
+
 @pytest.mark.parametrize("log_type", ("build", "runtime"))
 def test_surface_inspector_render_log_urls_bind_owner_id(log_type: str) -> None:
     from urllib.parse import parse_qs, urlsplit
