@@ -1203,6 +1203,7 @@ def _scan_directory(
     trufflehog: Path,
     environment: Mapping[str, str],
     allowlist: frozenset[tuple[str, str, str]] = frozenset(),
+    archive_member_prefix: str | None = None,
 ) -> list[str]:
     with tempfile.TemporaryDirectory(prefix="mercury-scanner-reports-") as temporary:
         report_root = Path(temporary)
@@ -1246,6 +1247,10 @@ def _scan_directory(
                 command, cwd=root, environment=environment, report=stdout_path
             )
             findings = _scanner_findings(scanner, finding_report, root=root)
+            if archive_member_prefix is not None:
+                findings = _normalize_archive_findings(
+                    findings, member_prefix=archive_member_prefix
+                )
             if status == 0 and findings:
                 raise InspectionError("scanner_execution_invalid")
             if status not in {0, 1, 183}:
@@ -1263,6 +1268,48 @@ def _scan_directory(
                 )
             )
     return hashes
+
+
+def _normalize_archive_findings(
+    findings: frozenset[tuple[str, str, str]],
+    *,
+    member_prefix: str,
+) -> frozenset[tuple[str, str, str]]:
+    decoded: set[tuple[str, str, str]] = set()
+    container: set[tuple[str, str, str]] = set()
+    for file_name, rule, digest in findings:
+        if file_name == "payload.bin":
+            container.add((file_name, rule, digest))
+            continue
+        if not file_name.startswith(member_prefix):
+            raise InspectionError("scanner_report_invalid")
+        member_name = file_name.removeprefix(member_prefix)
+        if not _safe_relative_path(member_name):
+            raise InspectionError("scanner_report_invalid")
+        decoded.add((member_name, rule, digest))
+
+    decoded_identities = {(rule, digest) for _file_name, rule, digest in decoded}
+    decoded.update(
+        finding
+        for finding in container
+        if (finding[1], finding[2]) not in decoded_identities
+    )
+    return frozenset(decoded)
+
+
+def _archive_member_prefix(decoded_root: Path) -> str:
+    try:
+        entries = tuple(decoded_root.iterdir())
+        if (
+            len(entries) == 1
+            and not entries[0].is_symlink()
+            and entries[0].is_dir()
+            and _safe_relative_path(entries[0].name)
+        ):
+            return f"decoded/{entries[0].name}/"
+    except OSError as exc:
+        raise InspectionError("archive_invalid") from exc
+    return "decoded/"
 
 
 def _run_scanner_capture(
@@ -1922,7 +1969,8 @@ def _scan_payloads(
             destination = object_root / "payload.bin"
             _materialize_payload(payload, destination, budget=scan_budget)
             hashes.append(_sha256_file(destination))
-            _decode_archive_members(destination, object_root / "decoded", budget=scan_budget, depth=0)
+            decoded_root = object_root / "decoded"
+            _decode_archive_members(destination, decoded_root, budget=scan_budget, depth=0)
             hashes.extend(
                 _scan_directory(
                     object_root,
@@ -1930,6 +1978,11 @@ def _scan_payloads(
                     trufflehog=trufflehog,
                     environment=_minimal_process_env(home),
                     allowlist=allowlist,
+                    archive_member_prefix=(
+                        _archive_member_prefix(decoded_root)
+                        if decoded_root.is_dir()
+                        else None
+                    ),
                 )
             )
     return hashes or [_canonical_sha256({"objects": 0})]

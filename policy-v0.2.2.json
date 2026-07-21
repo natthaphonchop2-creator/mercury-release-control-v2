@@ -11,7 +11,7 @@
   "inspector": {
     "interface_version": 2,
     "path": "src/mercury_release_control/surface_inspector.py",
-    "sha256": "db4c519cdcd64d6fe22bf026f7b93797d51e66d529ece7a279327d08692ff5fc"
+    "sha256": "f77df95112e4b5bc52a136dfeda90f72e7818a2861d6d81e5f193aaf2b826f38"
   },
   "immutable_releases_required": true,
   "release_tag_ruleset": {
