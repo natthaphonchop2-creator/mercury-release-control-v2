@@ -11,7 +11,7 @@ ACTION_PIN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$")
 MERCURY_REPOSITORY = "natthaphonchop2-creator/mercury-tools"
 MERCURY_REPOSITORY_ID = "1290137723"
 MIGRATION_PATH = "supabase/migrations/20260719120000_connector_neutral_profiles.sql"
-MIGRATION_SHA256 = "2ca702823fd17a7806ead1b829af21984ea54b676700cf443cb69b7e6161c0ca"
+MIGRATION_SHA256 = "7e6378206076be0d314c2ffb6636e5ea728150ad29491450e3e397c5b6271300"
 CA_URL = "https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt"
 CA_SHA256 = "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7"
 
