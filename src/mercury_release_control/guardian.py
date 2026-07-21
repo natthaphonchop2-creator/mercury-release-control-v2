@@ -37,7 +37,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "82c8c4deacfddad4736d89bbbf8bf197a420c5d7585dfd0ca85675871a669fe4"
     ),
     ".github/workflows/migrate-v0.3.0.yml": (
-        "acb52cd7b27dc5aa9307204e2c16220d9f4658e4fb4510c526b0516cd5aaf168"
+        "022bc7af4ad7e448a49414ea4f3aab6d680ded9077e09c4369ffaec51e41c139"
     ),
     ".github/workflows/publish-v0.2.2.yml": (
         "9e1842ba720916e82fb63d6d3a31719632fe680bd6d8c8902f5f114dde37364d"
@@ -70,7 +70,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "52dde96c3954c8cbe1415758fbafbc0977968d9dc8817c7565e993b58c406a32"
     ),
     "src/mercury_release_control/production_migration.py": (
-        "7d940f3ae5348bdfbd0168a8db02517ff9132c68a79bb32c62b3614df104935e"
+        "9d59f730219c6575558b5e820d826ce4cfd90de37a556d01d4d9a3339975dc2d"
     ),
     "src/mercury_release_control/provider_inspector.py": (
         "410c6baf5f62e5631d41c1fd19f74d08ca73d5f8ba1aa208e070d8a5acb6f7e3"
@@ -676,7 +676,7 @@ def _validate_migration_workflow(workflow: Mapping[str, object], text: str) -> N
         "natthaphonchop2-creator/mercury-tools",
         "1290137723",
         "supabase/migrations/20260719120000_connector_neutral_profiles.sql",
-        "2ca702823fd17a7806ead1b829af21984ea54b676700cf443cb69b7e6161c0ca",
+        "7e6378206076be0d314c2ffb6636e5ea728150ad29491450e3e397c5b6271300",
         "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7",
         "git/ref/heads/main",
         "PGSSLROOTCERT",
