@@ -45,8 +45,8 @@ V030_TRUSTED_FILE_SHA256 = {
     ".github/workflows/publish-v0.3.0.yml": (
         "a8efdc960dadcabae052dd4f0b80d5f5e1b3bf87175527c04a4201b4d2d8ff16"
     ),
-    "policy-v0.2.2.json": "4f2510b759528fc32d64882b74353503ba2719ebf0553b550f2e90e9459c1b22",
-    "policy-v0.3.0.json": ("0148e7563fec793b6bccc26e68764b5e1ce3a369b283b30969cbfe02e3e249d9"),
+    "policy-v0.2.2.json": "226f24dac0cc053dccc3fb348457c9ba26129f00360635a4e859089806d62487",
+    "policy-v0.3.0.json": ("aefa0f810079b1afceb8a7e9cf5c75da1f3102efbe6bd36490d3564ecd8a8b32"),
     "pyproject.toml": "f7ea42368cec3da102875f56dc7d70967a77b3794073e28416705d46fbc0663b",
     "src/mercury_release_control/__init__.py": (
         "735f223b0e1fe89a4515496dbec2e3dbc30218c044a9085624e5ada69af22ad9"
@@ -91,7 +91,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "cb537c2f97f697874e92c4acefb17722684c131e3021b982accfbebc6f228d58"
     ),
     "src/mercury_release_control/surface_inspector.py": (
-        "74feb970fe55cfae73c690f0d5bfd00e06d506b07d8f6a03313eec54d0a55673"
+        "db9f5117eda2c5202fa29f4e939b3cefce184f53fd53b6d7681c1e480fffc615"
     ),
     "src/mercury_release_control/workflow.py": (
         "d7d8a97b926a183fbd688d59785107a8b4763e60781c297d8cceb2949230e685"
@@ -115,7 +115,7 @@ V030_EXPECTED_POLICY: Mapping[str, object] = json.loads(
   "inspector": {
     "interface_version": 2,
     "path": "src/mercury_release_control/surface_inspector.py",
-    "sha256": "74feb970fe55cfae73c690f0d5bfd00e06d506b07d8f6a03313eec54d0a55673"
+    "sha256": "db9f5117eda2c5202fa29f4e939b3cefce184f53fd53b6d7681c1e480fffc615"
   },
   "immutable_releases_required": true,
   "release_tag_ruleset": {

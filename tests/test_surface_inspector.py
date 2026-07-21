@@ -229,12 +229,13 @@ def test_payload_scan_normalizes_single_root_archive_and_deduplicates_raw_archiv
     with tarfile.open(payload, mode="w") as archive:
         archive.add(source, arcname="mercury-tools-reviewed/tests/fixture.py")
 
+    raw_value = "synthetic-fixture"
     canonical = {
         "scanner": "gitleaks",
         "rule_id": "generic-api-key",
         "commit": "",
         "start_line": 1,
-        "secret_sha256": inspector._scanner_value_digest("REDACTED"),
+        "secret_sha256": inspector._scanner_value_digest(raw_value),
     }
     digest = inspector._scanner_evidence_digest(canonical)
 
@@ -244,9 +245,11 @@ def test_payload_scan_normalizes_single_root_archive_and_deduplicates_raw_archiv
         cwd: Path,
         environment: dict[str, str],
         report: Path,
+        budget: inspector.InspectionBudget | None = None,
     ) -> int:
-        del environment
+        del environment, budget
         if Path(command[0]).name == "gitleaks":
+            assert "--redact" not in command
             report_path = Path(
                 next(item.split("=", 1)[1] for item in command if item.startswith("--report-path="))
             )
@@ -256,7 +259,7 @@ def test_payload_scan_normalizes_single_root_archive_and_deduplicates_raw_archiv
                         "Commit": "",
                         "File": str(cwd / "payload.bin"),
                         "RuleID": "generic-api-key",
-                        "Secret": "REDACTED",
+                        "Secret": raw_value,
                         "StartLine": 1,
                     },
                     {
@@ -266,7 +269,7 @@ def test_payload_scan_normalizes_single_root_archive_and_deduplicates_raw_archiv
                             / "decoded/mercury-tools-reviewed/tests/fixture.py"
                         ),
                         "RuleID": "generic-api-key",
-                        "Secret": "REDACTED",
+                        "Secret": raw_value,
                         "StartLine": 1,
                     },
                 ]
@@ -276,7 +279,7 @@ def test_payload_scan_normalizes_single_root_archive_and_deduplicates_raw_archiv
                         "Commit": "",
                         "File": str(next(cwd.rglob("fixture.py"))),
                         "RuleID": "generic-api-key",
-                        "Secret": "REDACTED",
+                        "Secret": raw_value,
                         "StartLine": 1,
                     }
                 ]
@@ -329,8 +332,9 @@ def test_payload_scan_reconciles_trufflehog_raw_duplicate_by_secret_identity(
         cwd: Path,
         environment: dict[str, str],
         report: Path,
+        budget: inspector.InspectionBudget | None = None,
     ) -> int:
-        del cwd, environment
+        del cwd, environment, budget
         if Path(command[0]).name == "gitleaks":
             report_path = Path(
                 next(item.split("=", 1)[1] for item in command if item.startswith("--report-path="))
@@ -378,6 +382,75 @@ def test_payload_scan_reconciles_trufflehog_raw_duplicate_by_secret_identity(
     )
 
     assert len(hashes) == 3
+
+
+@pytest.mark.parametrize(
+    ("scanner", "status"),
+    (("gitleaks", 1), ("trufflehog", 1), ("trufflehog", 183)),
+)
+def test_scanner_result_rejects_nonzero_status_without_findings(
+    scanner: str, status: int
+) -> None:
+    with pytest.raises(InspectionError, match="^scanner_execution_failed$"):
+        inspector._validate_scanner_result(scanner, status, frozenset())
+
+
+def test_gitleaks_fingerprint_is_bound_to_the_unredacted_value(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+
+    def fingerprint(value: str, name: str) -> frozenset[inspector.ScannerFinding]:
+        report = tmp_path / name
+        report.write_text(
+            json.dumps(
+                [
+                    {
+                        "Commit": "",
+                        "File": "fixture.py",
+                        "RuleID": "generic-api-key",
+                        "Secret": value,
+                        "StartLine": 1,
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+        return inspector._scanner_finding_records("gitleaks", report, root=root)
+
+    assert fingerprint("synthetic-first-value", "first.json") != fingerprint(
+        "synthetic-second-value", "second.json"
+    )
+
+
+def test_scanner_process_honors_global_inspection_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Process:
+        returncode = 0
+
+        def poll(self) -> None:
+            return None
+
+        def kill(self) -> None:
+            return None
+
+        def wait(self, timeout: int) -> int:
+            del timeout
+            return 0
+
+    moments = iter((0.0, 0.0, 6.0))
+    monkeypatch.setattr(inspector, "INSPECTION_TIMEOUT_SECONDS", 5.0)
+    monkeypatch.setattr(inspector.time, "monotonic", lambda: next(moments))
+    monkeypatch.setattr(inspector.subprocess, "Popen", lambda *_args, **_kwargs: Process())
+
+    with pytest.raises(InspectionError, match="^inspection_time_budget_exhausted$"):
+        inspector._run_scanner_capture(
+            ("/usr/bin/true",),
+            cwd=tmp_path,
+            environment={},
+            report=tmp_path / "scanner.json",
+            budget=inspector.InspectionBudget(started=0.0),
+        )
 
 
 def test_archive_finding_normalization_keeps_container_only_evidence_blocking() -> None:

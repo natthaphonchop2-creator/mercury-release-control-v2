@@ -1216,7 +1216,9 @@ def _scan_directory(
     environment: Mapping[str, str],
     allowlist: frozenset[tuple[str, str, str]] = frozenset(),
     archive_member_prefix: str | None = None,
+    budget: InspectionBudget | None = None,
 ) -> list[str]:
+    scan_budget = budget or InspectionBudget(time.monotonic())
     with tempfile.TemporaryDirectory(prefix="mercury-scanner-reports-") as temporary:
         report_root = Path(temporary)
         gitleaks_report = report_root / "gitleaks.json"
@@ -1229,7 +1231,6 @@ def _scan_directory(
                     str(gitleaks),
                     "dir",
                     "--no-banner",
-                    "--redact",
                     "--exit-code=1",
                     "--report-format=json",
                     f"--report-path={gitleaks_report}",
@@ -1241,7 +1242,6 @@ def _scan_directory(
                     str(gitleaks),
                     "dir",
                     "--no-banner",
-                    "--redact",
                     "--exit-code=1",
                     "--report-format=json",
                     f"--report-path={gitleaks_decoded_report}",
@@ -1291,13 +1291,14 @@ def _scan_directory(
             decoded_finding_report,
         ) in commands:
             status = _run_scanner_capture(
-                command, cwd=root, environment=environment, report=stdout_path
+                command,
+                cwd=root,
+                environment=environment,
+                report=stdout_path,
+                budget=scan_budget,
             )
             records = _scanner_finding_records(scanner, finding_report, root=root)
-            if status == 0 and records:
-                raise InspectionError("scanner_execution_invalid")
-            if status not in {0, 1, 183}:
-                raise InspectionError("scanner_execution_failed")
+            _validate_scanner_result(scanner, status, records)
             statuses = [status]
             if archive_member_prefix is not None:
                 decoded_status = _run_scanner_capture(
@@ -1305,16 +1306,14 @@ def _scan_directory(
                     cwd=decoded_root,
                     environment=environment,
                     report=decoded_stdout_path,
+                    budget=scan_budget,
                 )
                 decoded_records = _scanner_finding_records(
                     scanner,
                     decoded_finding_report,
                     root=decoded_root,
                 )
-                if decoded_status == 0 and decoded_records:
-                    raise InspectionError("scanner_execution_invalid")
-                if decoded_status not in {0, 1, 183}:
-                    raise InspectionError("scanner_execution_failed")
+                _validate_scanner_result(scanner, decoded_status, decoded_records)
                 statuses.append(decoded_status)
                 records = _normalize_archive_finding_records(
                     frozenset(
@@ -1347,6 +1346,25 @@ def _scan_directory(
                 )
             )
     return hashes
+
+
+def _validate_scanner_result(
+    scanner: str,
+    status: int,
+    findings: frozenset[ScannerFinding],
+) -> None:
+    finding_status = {"gitleaks": 1, "trufflehog": 183}.get(scanner)
+    if finding_status is None:
+        raise InspectionError("scanner_report_invalid")
+    if status == 0:
+        if findings:
+            raise InspectionError("scanner_execution_invalid")
+        return
+    if status == finding_status:
+        if not findings:
+            raise InspectionError("scanner_execution_failed")
+        return
+    raise InspectionError("scanner_execution_failed")
 
 
 def _normalize_archive_findings(
@@ -1437,9 +1455,16 @@ def _archive_member_prefix(decoded_root: Path) -> str:
 
 
 def _run_scanner_capture(
-    command: Sequence[str], *, cwd: Path, environment: Mapping[str, str], report: Path
+    command: Sequence[str],
+    *,
+    cwd: Path,
+    environment: Mapping[str, str],
+    report: Path,
+    budget: InspectionBudget | None = None,
 ) -> int:
     try:
+        if budget is not None:
+            budget.check_time()
         with report.open("xb", buffering=0) as output:
             process = subprocess.Popen(
                 list(command),
@@ -1449,15 +1474,31 @@ def _run_scanner_capture(
                 stdout=output,
                 stderr=subprocess.DEVNULL,
             )
-            deadline = time.monotonic() + PROCESS_TIMEOUT_SECONDS
+            current = time.monotonic()
+            process_deadline = current + PROCESS_TIMEOUT_SECONDS
+            global_deadline = (
+                budget.started + INSPECTION_TIMEOUT_SECONDS
+                if budget is not None
+                else None
+            )
+            deadline = (
+                min(process_deadline, global_deadline)
+                if global_deadline is not None
+                else process_deadline
+            )
             while process.poll() is None:
-                if report.stat().st_size > MAX_PROCESS_OUTPUT_BYTES or time.monotonic() >= deadline:
+                current = time.monotonic()
+                if report.stat().st_size > MAX_PROCESS_OUTPUT_BYTES or current >= deadline:
                     process.kill()
                     process.wait(timeout=10)
+                    if global_deadline is not None and current >= global_deadline:
+                        raise InspectionError("inspection_time_budget_exhausted")
                     raise InspectionError("scanner_execution_failed")
                 time.sleep(0.01)
             if report.stat().st_size > MAX_PROCESS_OUTPUT_BYTES:
                 raise InspectionError("scanner_report_too_large")
+            if budget is not None:
+                budget.check_time()
             return process.returncode
     except InspectionError:
         raise
@@ -2148,6 +2189,7 @@ def _scan_payloads(
                         if decoded_root.is_dir()
                         else None
                     ),
+                    budget=scan_budget,
                 )
             )
     return hashes or [_canonical_sha256({"objects": 0})]
