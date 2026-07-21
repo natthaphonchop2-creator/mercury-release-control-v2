@@ -20,6 +20,18 @@ from mercury_release_control.surface_inspector import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_github_download_redirect_hosts_are_exact_and_include_actions_logs() -> None:
+    assert frozenset(
+        {
+            "github-production-release-asset-2e65be.s3.amazonaws.com",
+            "github-releases.githubusercontent.com",
+            "objects.githubusercontent.com",
+            "pipelines.actions.githubusercontent.com",
+            "results-receiver.actions.githubusercontent.com",
+        }
+    ) == inspector._GITHUB_DOWNLOAD_HOSTS
+
+
 def _configured_policy() -> dict[str, object]:
     policy = json.loads((ROOT / "policy-v0.3.0.json").read_text(encoding="utf-8"))
     policy["bootstrap_state"] = "configured"

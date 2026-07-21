@@ -197,6 +197,7 @@ _GITHUB_DOWNLOAD_HOSTS = frozenset(
         "github-releases.githubusercontent.com",
         "github-production-release-asset-2e65be.s3.amazonaws.com",
         "pipelines.actions.githubusercontent.com",
+        "results-receiver.actions.githubusercontent.com",
     }
 )
 _REQUIRED_ENVIRONMENT = (
