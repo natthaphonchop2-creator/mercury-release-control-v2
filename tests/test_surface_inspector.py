@@ -250,34 +250,123 @@ def test_payload_scan_normalizes_single_root_archive_and_deduplicates_raw_archiv
             report_path = Path(
                 next(item.split("=", 1)[1] for item in command if item.startswith("--report-path="))
             )
+            if (cwd / "payload.bin").is_file():
+                records = [
+                    {
+                        "Commit": "",
+                        "File": str(cwd / "payload.bin"),
+                        "RuleID": "generic-api-key",
+                        "Secret": "REDACTED",
+                        "StartLine": 1,
+                    },
+                    {
+                        "Commit": "",
+                        "File": str(
+                            cwd
+                            / "decoded/mercury-tools-reviewed/tests/fixture.py"
+                        ),
+                        "RuleID": "generic-api-key",
+                        "Secret": "REDACTED",
+                        "StartLine": 1,
+                    },
+                ]
+            else:
+                records = [
+                    {
+                        "Commit": "",
+                        "File": str(next(cwd.rglob("fixture.py"))),
+                        "RuleID": "generic-api-key",
+                        "Secret": "REDACTED",
+                        "StartLine": 1,
+                    }
+                ]
             report_path.write_text(
-                json.dumps(
-                    [
-                        {
-                            "Commit": "",
-                            "File": str(cwd / "payload.bin"),
-                            "RuleID": "generic-api-key",
-                            "Secret": "REDACTED",
-                            "StartLine": 1,
-                        },
-                        {
-                            "Commit": "",
-                            "File": str(
-                                cwd
-                                / "decoded/mercury-tools-reviewed/tests/fixture.py"
-                            ),
-                            "RuleID": "generic-api-key",
-                            "Secret": "REDACTED",
-                            "StartLine": 1,
-                        },
-                    ]
-                ),
+                json.dumps(records),
                 encoding="utf-8",
             )
             report.write_bytes(b"")
             return 1
         report.write_bytes(b"")
         return 0
+
+    monkeypatch.setattr(inspector, "_run_scanner_capture", scanner_probe)
+
+    hashes = inspector._scan_payloads(
+        (payload,),
+        gitleaks=tmp_path / "gitleaks",
+        trufflehog=tmp_path / "trufflehog",
+        allowlist=frozenset({("tests/fixture.py", "scanner_finding", digest)}),
+    )
+
+    assert len(hashes) == 3
+
+
+def test_payload_scan_reconciles_trufflehog_raw_duplicate_by_secret_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "fixture.py"
+    source.write_text('token = "synthetic-fixture"\n', encoding="utf-8")
+    payload = tmp_path / "payload.tar"
+    with tarfile.open(payload, mode="w") as archive:
+        archive.add(source, arcname="mercury-tools-reviewed/tests/fixture.py")
+
+    raw_value = "synthetic-fixture"
+    canonical = {
+        "scanner": "trufflehog",
+        "detector": "URI",
+        "decoder": "PLAIN",
+        "verified": False,
+        "line": 1,
+        "raw_sha256": inspector._scanner_value_digest(raw_value),
+        "raw_v2_sha256": None,
+    }
+    digest = inspector._scanner_evidence_digest(canonical)
+
+    def scanner_probe(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        environment: dict[str, str],
+        report: Path,
+    ) -> int:
+        del cwd, environment
+        if Path(command[0]).name == "gitleaks":
+            report_path = Path(
+                next(item.split("=", 1)[1] for item in command if item.startswith("--report-path="))
+            )
+            report_path.write_text("[]", encoding="utf-8")
+            report.write_bytes(b"")
+            return 0
+
+        scan_root = Path(command[command.index("--directory") + 1])
+        if (scan_root / "payload.bin").is_file():
+            file_name = scan_root / "payload.bin"
+            line = 200
+        else:
+            file_name = next(scan_root.rglob("fixture.py"))
+            line = 1
+        report.write_text(
+            json.dumps(
+                {
+                    "DetectorName": "URI",
+                    "DecoderName": "PLAIN",
+                    "Verified": False,
+                    "Raw": raw_value,
+                    "SourceMetadata": {
+                        "Data": {
+                            "Filesystem": {
+                                "file": str(file_name),
+                                "line": line,
+                            }
+                        }
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return 183
 
     monkeypatch.setattr(inspector, "_run_scanner_capture", scanner_probe)
 
@@ -318,6 +407,35 @@ def test_archive_finding_normalization_keeps_nonmatching_container_evidence() ->
         {
             ("tests/fixture.py", "scanner_finding", "a" * 64),
             container,
+        }
+    )
+
+
+def test_archive_record_normalization_keeps_raw_only_secret_identity() -> None:
+    raw = inspector.ScannerFinding(
+        file="payload.bin",
+        rule="scanner_finding",
+        evidence_digest="a" * 64,
+        match_digest="b" * 64,
+    )
+    decoded = inspector.ScannerFinding(
+        file="decoded/tests/fixture.py",
+        rule="scanner_finding",
+        evidence_digest="c" * 64,
+        match_digest="d" * 64,
+    )
+
+    assert inspector._normalize_archive_finding_records(
+        frozenset({raw, decoded}), member_prefix="decoded/"
+    ) == frozenset(
+        {
+            raw,
+            inspector.ScannerFinding(
+                file="tests/fixture.py",
+                rule="scanner_finding",
+                evidence_digest="c" * 64,
+                match_digest="d" * 64,
+            ),
         }
     )
 

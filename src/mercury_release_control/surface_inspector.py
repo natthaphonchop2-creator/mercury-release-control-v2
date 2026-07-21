@@ -305,6 +305,18 @@ class ArchiveSnapshot:
     static_files: Mapping[str, bytes]
 
 
+@dataclass(frozen=True)
+class ScannerFinding:
+    file: str
+    rule: str
+    evidence_digest: str
+    match_digest: str | None
+
+    @property
+    def allowlist_key(self) -> tuple[str, str, str]:
+        return (self.file, self.rule, self.evidence_digest)
+
+
 @dataclass
 class InspectionBudget:
     """One non-resettable resource budget for a complete inspection."""
@@ -1208,6 +1220,8 @@ def _scan_directory(
     with tempfile.TemporaryDirectory(prefix="mercury-scanner-reports-") as temporary:
         report_root = Path(temporary)
         gitleaks_report = report_root / "gitleaks.json"
+        gitleaks_decoded_report = report_root / "gitleaks-decoded.json"
+        decoded_root = root / "decoded"
         commands = (
             (
                 "gitleaks",
@@ -1223,6 +1237,18 @@ def _scan_directory(
                 ),
                 report_root / "gitleaks.stdout",
                 gitleaks_report,
+                (
+                    str(gitleaks),
+                    "dir",
+                    "--no-banner",
+                    "--redact",
+                    "--exit-code=1",
+                    "--report-format=json",
+                    f"--report-path={gitleaks_decoded_report}",
+                    str(decoded_root),
+                ),
+                report_root / "gitleaks-decoded.stdout",
+                gitleaks_decoded_report,
             ),
             (
                 "trufflehog",
@@ -1239,22 +1265,75 @@ def _scan_directory(
                 ),
                 report_root / "trufflehog.ndjson",
                 report_root / "trufflehog.ndjson",
+                (
+                    str(trufflehog),
+                    "filesystem",
+                    "--directory",
+                    str(decoded_root),
+                    "--json",
+                    "--fail",
+                    "--concurrency=1",
+                    "--no-update",
+                    "--no-verification",
+                ),
+                report_root / "trufflehog-decoded.ndjson",
+                report_root / "trufflehog-decoded.ndjson",
             ),
         )
         hashes: list[str] = []
-        for scanner, command, stdout_path, finding_report in commands:
+        for (
+            scanner,
+            command,
+            stdout_path,
+            finding_report,
+            decoded_command,
+            decoded_stdout_path,
+            decoded_finding_report,
+        ) in commands:
             status = _run_scanner_capture(
                 command, cwd=root, environment=environment, report=stdout_path
             )
-            findings = _scanner_findings(scanner, finding_report, root=root)
-            if archive_member_prefix is not None:
-                findings = _normalize_archive_findings(
-                    findings, member_prefix=archive_member_prefix
-                )
-            if status == 0 and findings:
+            records = _scanner_finding_records(scanner, finding_report, root=root)
+            if status == 0 and records:
                 raise InspectionError("scanner_execution_invalid")
             if status not in {0, 1, 183}:
                 raise InspectionError("scanner_execution_failed")
+            statuses = [status]
+            if archive_member_prefix is not None:
+                decoded_status = _run_scanner_capture(
+                    decoded_command,
+                    cwd=decoded_root,
+                    environment=environment,
+                    report=decoded_stdout_path,
+                )
+                decoded_records = _scanner_finding_records(
+                    scanner,
+                    decoded_finding_report,
+                    root=decoded_root,
+                )
+                if decoded_status == 0 and decoded_records:
+                    raise InspectionError("scanner_execution_invalid")
+                if decoded_status not in {0, 1, 183}:
+                    raise InspectionError("scanner_execution_failed")
+                statuses.append(decoded_status)
+                records = _normalize_archive_finding_records(
+                    frozenset(
+                        {
+                            *records,
+                            *(
+                                ScannerFinding(
+                                    file=f"decoded/{finding.file}",
+                                    rule=finding.rule,
+                                    evidence_digest=finding.evidence_digest,
+                                    match_digest=finding.match_digest,
+                                )
+                                for finding in decoded_records
+                            ),
+                        }
+                    ),
+                    member_prefix=archive_member_prefix,
+                )
+            findings = frozenset(finding.allowlist_key for finding in records)
             for finding in findings:
                 if finding not in allowlist:
                     raise InspectionError("secret_scan_finding")
@@ -1262,7 +1341,7 @@ def _scan_directory(
                 _canonical_sha256(
                     {
                         "scanner": scanner,
-                        "status": status,
+                        "status": statuses[0] if len(statuses) == 1 else statuses,
                         "findings": sorted(digest for _file, _rule, digest in findings),
                     }
                 )
@@ -1293,6 +1372,51 @@ def _normalize_archive_findings(
         finding
         for finding in container
         if (finding[1], finding[2]) not in decoded_identities
+    )
+    return frozenset(decoded)
+
+
+def _normalize_archive_finding_records(
+    findings: frozenset[ScannerFinding],
+    *,
+    member_prefix: str,
+) -> frozenset[ScannerFinding]:
+    decoded: set[ScannerFinding] = set()
+    container: set[ScannerFinding] = set()
+    for finding in findings:
+        if finding.file == "payload.bin":
+            container.add(finding)
+            continue
+        if not finding.file.startswith(member_prefix):
+            raise InspectionError("scanner_report_invalid")
+        member_name = finding.file.removeprefix(member_prefix)
+        if not _safe_relative_path(member_name):
+            raise InspectionError("scanner_report_invalid")
+        decoded.add(
+            ScannerFinding(
+                file=member_name,
+                rule=finding.rule,
+                evidence_digest=finding.evidence_digest,
+                match_digest=finding.match_digest,
+            )
+        )
+
+    decoded_evidence = {
+        (finding.rule, finding.evidence_digest) for finding in decoded
+    }
+    decoded_matches = {
+        finding.match_digest
+        for finding in decoded
+        if finding.match_digest is not None
+    }
+    decoded.update(
+        finding
+        for finding in container
+        if (finding.rule, finding.evidence_digest) not in decoded_evidence
+        and (
+            finding.match_digest is None
+            or finding.match_digest not in decoded_matches
+        )
     )
     return frozenset(decoded)
 
@@ -1383,9 +1507,19 @@ def _scanner_evidence_digest(canonical: Mapping[str, object]) -> str:
     return _sha256_bytes(b"scanner_finding\0" + encoded)
 
 
-def _scanner_findings(
+def _scanner_match_digest(canonical: Mapping[str, object]) -> str:
+    encoded = json.dumps(
+        canonical,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return _sha256_bytes(b"scanner_match\0" + encoded)
+
+
+def _scanner_finding_records(
     scanner: str, report: Path, *, root: Path
-) -> frozenset[tuple[str, str, str]]:
+) -> frozenset[ScannerFinding]:
     if scanner == "gitleaks" and not report.exists():
         return frozenset()
     try:
@@ -1411,7 +1545,7 @@ def _scanner_findings(
             ]
     except (UnicodeDecodeError, json.JSONDecodeError, InspectionError) as exc:
         raise InspectionError("scanner_report_invalid") from exc
-    findings: set[tuple[str, str, str]] = set()
+    findings: set[ScannerFinding] = set()
     for raw in raw_records:
         record = _require_mapping(raw, "scanner_report_invalid")
         if scanner == "gitleaks":
@@ -1427,6 +1561,7 @@ def _scanner_findings(
                 "start_line": _scanner_integer(record.get("StartLine")),
                 "secret_sha256": secret_sha256,
             }
+            match_digest = None
         else:
             source = _require_mapping(record.get("SourceMetadata"), "scanner_report_invalid")
             data = _require_mapping(source.get("Data"), "scanner_report_invalid")
@@ -1454,12 +1589,42 @@ def _scanner_findings(
                 "raw_sha256": raw_sha256,
                 "raw_v2_sha256": raw_v2_sha256,
             }
+            match_digest = _scanner_match_digest(
+                {
+                    "scanner": "trufflehog",
+                    "detector": _scanner_scalar(rule_id),
+                    "decoder": _scanner_scalar(record.get("DecoderName")),
+                    "verified": (
+                        record.get("Verified")
+                        if isinstance(record.get("Verified"), bool)
+                        else None
+                    ),
+                    "raw_sha256": raw_sha256,
+                    "raw_v2_sha256": raw_v2_sha256,
+                }
+            )
         if not isinstance(rule_id, str) or not rule_id or len(rule_id) > 512:
             raise InspectionError("scanner_report_invalid")
         file_path = _relative_scanner_path(file_name, root=root)
         digest = _scanner_evidence_digest(canonical)
-        findings.add((file_path, "scanner_finding", digest))
+        findings.add(
+            ScannerFinding(
+                file=file_path,
+                rule="scanner_finding",
+                evidence_digest=digest,
+                match_digest=match_digest,
+            )
+        )
     return frozenset(findings)
+
+
+def _scanner_findings(
+    scanner: str, report: Path, *, root: Path
+) -> frozenset[tuple[str, str, str]]:
+    return frozenset(
+        finding.allowlist_key
+        for finding in _scanner_finding_records(scanner, report, root=root)
+    )
 
 
 def _safe_archive_name(name: str) -> bool:
