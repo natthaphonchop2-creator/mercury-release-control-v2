@@ -46,7 +46,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "a8efdc960dadcabae052dd4f0b80d5f5e1b3bf87175527c04a4201b4d2d8ff16"
     ),
     "policy-v0.2.2.json": "e02c0b26e92fe942eed931ce026227ceb8c1f12642c0b43b0ae6c12469702bf3",
-    "policy-v0.3.0.json": ("8c8d415d9789ec278860927bab1f26041e0744ad29d70e9d9b4f0babd3c408f6"),
+    "policy-v0.3.0.json": ("e2c812b267bee54254733cbe8d3c752fbdf3a5fb8eea66be8918827047b02d5a"),
     "pyproject.toml": "f7ea42368cec3da102875f56dc7d70967a77b3794073e28416705d46fbc0663b",
     "src/mercury_release_control/__init__.py": (
         "735f223b0e1fe89a4515496dbec2e3dbc30218c044a9085624e5ada69af22ad9"
@@ -70,7 +70,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "52dde96c3954c8cbe1415758fbafbc0977968d9dc8817c7565e993b58c406a32"
     ),
     "src/mercury_release_control/production_migration.py": (
-        "a23e7e9f3d67990542e8a715d29f48e964f3fd01ac75a620ed6c2844854a3865"
+        "7d940f3ae5348bdfbd0168a8db02517ff9132c68a79bb32c62b3614df104935e"
     ),
     "src/mercury_release_control/provider_inspector.py": (
         "410c6baf5f62e5631d41c1fd19f74d08ca73d5f8ba1aa208e070d8a5acb6f7e3"
@@ -182,7 +182,7 @@ V030_EXPECTED_POLICY: Mapping[str, object] = json.loads(
   "supabase": {
     "project_ref": "vbnlkqvauqwnjbxngkas",
     "migration_id": "20260719120000",
-    "migration_history_sha256": "324cff822a5a4d8e4a2554fa875471dec2345676fe8768c8ffe7cff283ffe3fb",
+    "migration_history_sha256": "efc2b2ece5efa30008b7fb86097f43b205abb057acf4e2b470767555fc463db7",
     "tables": [
       "erp_action_catalog",
       "erp_action_observations",
@@ -249,7 +249,7 @@ V030_EXPECTED_POLICY: Mapping[str, object] = json.loads(
         "definition_sha256": "534521773977fe6dcea308ec02c4f3ce42ca2c2b4f3c6536325400eeae38d252"
       }
     ],
-    "schema_sha256": "2790a55ffa796eb1396fae6672d1a81120fa758080e29899811da1f1f53a39d6"
+    "schema_sha256": "e81da9304677ba2bdd2351fc2870cc83e2b9d53c76520d49193572518962efad"
   },
   "release": {"tag": "v0.3.0", "version": "0.3.0"},
   "staging": {
