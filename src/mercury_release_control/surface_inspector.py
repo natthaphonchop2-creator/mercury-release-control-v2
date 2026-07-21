@@ -1331,6 +1331,7 @@ def _scan_directory(
                         }
                     ),
                     member_prefix=archive_member_prefix,
+                    allowlist=allowlist,
                 )
             findings = frozenset(finding.allowlist_key for finding in records)
             for finding in findings:
@@ -1398,6 +1399,7 @@ def _normalize_archive_finding_records(
     findings: frozenset[ScannerFinding],
     *,
     member_prefix: str,
+    allowlist: frozenset[tuple[str, str, str]] = frozenset(),
 ) -> frozenset[ScannerFinding]:
     decoded: set[ScannerFinding] = set()
     container: set[ScannerFinding] = set()
@@ -1427,6 +1429,11 @@ def _normalize_archive_finding_records(
         for finding in decoded
         if finding.match_digest is not None
     }
+    allowlisted_decoded_evidence = {
+        (rule, digest)
+        for file_name, rule, digest in allowlist
+        if file_name != "payload.bin"
+    }
     decoded.update(
         finding
         for finding in container
@@ -1434,6 +1441,11 @@ def _normalize_archive_finding_records(
         and (
             finding.match_digest is None
             or finding.match_digest not in decoded_matches
+        )
+        and (
+            finding.match_digest is None
+            or (finding.rule, finding.evidence_digest)
+            not in allowlisted_decoded_evidence
         )
     )
     return frozenset(decoded)

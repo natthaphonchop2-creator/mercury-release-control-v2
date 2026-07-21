@@ -513,6 +513,23 @@ def test_archive_record_normalization_keeps_raw_only_secret_identity() -> None:
     )
 
 
+def test_archive_record_normalization_drops_exact_allowlisted_raw_fixture() -> None:
+    raw = inspector.ScannerFinding(
+        file="payload.bin",
+        rule="scanner_finding",
+        evidence_digest="a" * 64,
+        match_digest="b" * 64,
+    )
+
+    assert inspector._normalize_archive_finding_records(
+        frozenset({raw}),
+        member_prefix="decoded/",
+        allowlist=frozenset(
+            {("tests/fixture.py", "scanner_finding", "a" * 64)}
+        ),
+    ) == frozenset()
+
+
 def test_archive_member_prefix_does_not_strip_multi_root_archives(tmp_path: Path) -> None:
     decoded_root = tmp_path / "decoded"
     (decoded_root / "first").mkdir(parents=True)
