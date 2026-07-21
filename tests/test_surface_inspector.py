@@ -104,6 +104,31 @@ def test_surface_inspector_requires_safe_render_owner_id() -> None:
         validate_environment(policy, environment)
 
 
+def test_scanner_version_probe_accepts_trufflehog_version_on_stderr(
+    tmp_path: Path,
+) -> None:
+    gitleaks = tmp_path / "gitleaks"
+    gitleaks.write_text("#!/bin/sh\nprintf '8.24.3\\n'\n", encoding="utf-8")
+    gitleaks.chmod(0o700)
+    trufflehog = tmp_path / "trufflehog"
+    trufflehog.write_text(
+        "#!/bin/sh\nprintf 'trufflehog 3.88.32\\n' >&2\n",
+        encoding="utf-8",
+    )
+    trufflehog.chmod(0o700)
+    environment = {
+        "HOME": str(tmp_path),
+        "INSPECTOR_GITLEAKS": str(gitleaks),
+        "INSPECTOR_TRUFFLEHOG": str(trufflehog),
+        "PATH": "/usr/bin:/bin",
+    }
+
+    assert inspector._require_scanner_versions(environment, tmp_path) == (
+        gitleaks,
+        trufflehog,
+    )
+
+
 @pytest.mark.parametrize("log_type", ("build", "runtime"))
 def test_surface_inspector_render_log_urls_bind_owner_id(log_type: str) -> None:
     from urllib.parse import parse_qs, urlsplit

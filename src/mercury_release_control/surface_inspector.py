@@ -978,7 +978,11 @@ def _run_silent(
 
 
 def _run_capture(
-    command: Sequence[str], *, cwd: Path | None, environment: Mapping[str, str]
+    command: Sequence[str],
+    *,
+    cwd: Path | None,
+    environment: Mapping[str, str],
+    stderr_to_stdout: bool = False,
 ) -> bytes:
     try:
         with tempfile.TemporaryDirectory(prefix="mercury-process-output-") as temporary:
@@ -990,7 +994,7 @@ def _run_capture(
                     env=dict(environment),
                     stdin=subprocess.DEVNULL,
                     stdout=output,
-                    stderr=subprocess.DEVNULL,
+                    stderr=output if stderr_to_stdout else subprocess.DEVNULL,
                 )
                 deadline = time.monotonic() + PROCESS_TIMEOUT_SECONDS
                 while process.poll() is None:
@@ -1070,7 +1074,12 @@ def _require_scanner_versions(environment: Mapping[str, str], home: Path) -> tup
         ("INSPECTOR_TRUFFLEHOG", "3.88.32", "--version"),
     ):
         location = _absolute_executable(environment.get(variable), code="scanner_unavailable")
-        output = _run_capture((str(location), flag), cwd=None, environment=environment)
+        output = _run_capture(
+            (str(location), flag),
+            cwd=None,
+            environment=environment,
+            stderr_to_stdout=True,
+        )
         try:
             version_text = output.decode("ascii", errors="strict")
         except UnicodeDecodeError as exc:
