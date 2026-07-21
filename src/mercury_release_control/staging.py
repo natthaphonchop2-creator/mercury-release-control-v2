@@ -268,17 +268,28 @@ class GitHubRestApi:
         file_count = 0
         with tarfile.open(fileobj=output, mode="w", format=tarfile.PAX_FORMAT) as archive:
             for raw in raw_tree:
-                if not isinstance(raw, dict) or raw.get("type") != "blob":
+                if not isinstance(raw, dict):
                     raise StagingError("staging_remote_invalid")
+                object_type = raw.get("type")
                 path = raw.get("path")
                 mode = raw.get("mode")
-                blob_sha = _sha(raw, "sha")
-                if not isinstance(path, str) or mode not in {"100644", "100755"}:
+                object_sha = _sha(raw, "sha")
+                if not isinstance(path, str):
                     raise StagingError("staging_remote_invalid")
-                blob = self._required("GET", f"/repos/{repository}/git/blobs/{blob_sha}")
+                if object_type == "tree":
+                    if mode != "040000":
+                        raise StagingError("staging_remote_invalid")
+                    member = tarfile.TarInfo(path)
+                    member.type = tarfile.DIRTYPE
+                    member.mode = 0o755
+                    archive.addfile(member)
+                    continue
+                if object_type != "blob" or mode not in {"100644", "100755"}:
+                    raise StagingError("staging_remote_invalid")
+                blob = self._required("GET", f"/repos/{repository}/git/blobs/{object_sha}")
                 if blob.get("encoding") != "base64":
                     raise StagingError("staging_remote_invalid")
-                content = _decode_blob(blob.get("content"), blob_sha)
+                content = _decode_blob(blob.get("content"), object_sha)
                 member = tarfile.TarInfo(path)
                 member.mode = 0o755 if mode == "100755" else 0o644
                 member.size = len(content)

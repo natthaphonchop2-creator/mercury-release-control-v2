@@ -88,7 +88,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "57e43c24eb370a16034404207b8b7155344192608c7fcf418bb4f615dcbd022d"
     ),
     "src/mercury_release_control/staging.py": (
-        "a6258d4726fdad5399469761d3748aeaa36722a2dc917c210600d930953c9230"
+        "cce0608098ddbc9ab27a81396d9c81d04368500a32d091360b8dc26713021821"
     ),
     "src/mercury_release_control/surface_inspector.py": (
         "94f3bfa679e021213fa1103346925f6ba24691d9a8a3f3ee402f8a93568caa0f"
