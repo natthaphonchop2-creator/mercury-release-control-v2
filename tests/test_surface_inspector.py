@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tarfile
 from pathlib import Path
 from unittest.mock import create_autospec
 
@@ -216,6 +217,117 @@ def test_git_scan_passes_trusted_config_only_to_gitleaks(
 
     assert f"--config={config}" in commands[0]
     assert not any(item.startswith("--config=") for item in commands[1])
+
+
+def test_payload_scan_normalizes_single_root_archive_and_deduplicates_raw_archive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "fixture.py"
+    source.write_text('token = "synthetic-fixture"\n', encoding="utf-8")
+    payload = tmp_path / "payload.tar"
+    with tarfile.open(payload, mode="w") as archive:
+        archive.add(source, arcname="mercury-tools-reviewed/tests/fixture.py")
+
+    canonical = {
+        "scanner": "gitleaks",
+        "rule_id": "generic-api-key",
+        "commit": "",
+        "start_line": 1,
+        "secret_sha256": inspector._scanner_value_digest("REDACTED"),
+    }
+    digest = inspector._scanner_evidence_digest(canonical)
+
+    def scanner_probe(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        environment: dict[str, str],
+        report: Path,
+    ) -> int:
+        del environment
+        if Path(command[0]).name == "gitleaks":
+            report_path = Path(
+                next(item.split("=", 1)[1] for item in command if item.startswith("--report-path="))
+            )
+            report_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "Commit": "",
+                            "File": str(cwd / "payload.bin"),
+                            "RuleID": "generic-api-key",
+                            "Secret": "REDACTED",
+                            "StartLine": 1,
+                        },
+                        {
+                            "Commit": "",
+                            "File": str(
+                                cwd
+                                / "decoded/mercury-tools-reviewed/tests/fixture.py"
+                            ),
+                            "RuleID": "generic-api-key",
+                            "Secret": "REDACTED",
+                            "StartLine": 1,
+                        },
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            report.write_bytes(b"")
+            return 1
+        report.write_bytes(b"")
+        return 0
+
+    monkeypatch.setattr(inspector, "_run_scanner_capture", scanner_probe)
+
+    hashes = inspector._scan_payloads(
+        (payload,),
+        gitleaks=tmp_path / "gitleaks",
+        trufflehog=tmp_path / "trufflehog",
+        allowlist=frozenset({("tests/fixture.py", "scanner_finding", digest)}),
+    )
+
+    assert len(hashes) == 3
+
+
+def test_archive_finding_normalization_keeps_container_only_evidence_blocking() -> None:
+    finding = ("payload.bin", "scanner_finding", "a" * 64)
+
+    assert inspector._normalize_archive_findings(
+        frozenset({finding}), member_prefix="decoded/"
+    ) == frozenset({finding})
+
+
+def test_archive_finding_normalization_rejects_paths_outside_wrapper() -> None:
+    finding = ("unexpected.txt", "scanner_finding", "a" * 64)
+
+    with pytest.raises(InspectionError, match="^scanner_report_invalid$"):
+        inspector._normalize_archive_findings(
+            frozenset({finding}), member_prefix="decoded/"
+        )
+
+
+def test_archive_finding_normalization_keeps_nonmatching_container_evidence() -> None:
+    decoded = ("decoded/tests/fixture.py", "scanner_finding", "a" * 64)
+    container = ("payload.bin", "scanner_finding", "b" * 64)
+
+    assert inspector._normalize_archive_findings(
+        frozenset({decoded, container}), member_prefix="decoded/"
+    ) == frozenset(
+        {
+            ("tests/fixture.py", "scanner_finding", "a" * 64),
+            container,
+        }
+    )
+
+
+def test_archive_member_prefix_does_not_strip_multi_root_archives(tmp_path: Path) -> None:
+    decoded_root = tmp_path / "decoded"
+    (decoded_root / "first").mkdir(parents=True)
+    (decoded_root / "second").mkdir()
+
+    assert inspector._archive_member_prefix(decoded_root) == "decoded/"
 
 
 def test_staging_static_requires_exact_remote_public_mcp_endpoint(
