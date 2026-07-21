@@ -6,6 +6,7 @@ import pytest
 
 from mercury_release_control.hosted_collector import (
     HostedProviderCollector,
+    _live_deploy,
     _mcp_envelope,
     _parse_json,
     _render_log_url,
@@ -49,6 +50,26 @@ def test_tool_payload_requires_structured_or_json_text_content() -> None:
 
     with pytest.raises(InspectionError, match="^public_mcp_response_invalid$"):
         _tool_payload({"content": [{"type": "image"}]})
+
+
+def test_live_deploy_reads_official_render_cursor_envelope() -> None:
+    reviewed_sha = "a" * 40
+
+    assert _live_deploy(
+        {
+            "cursor": "next-page-cursor",
+            "deploy": {
+                "commit": {"id": reviewed_sha, "message": "release"},
+                "id": "dep-d9fudtu1a83c73e50o70",
+                "status": "live",
+            },
+        },
+        reviewed_sha,
+    )
+    assert not _live_deploy(
+        {"commit": {"id": reviewed_sha}, "id": "dep-flat", "status": "live"},
+        reviewed_sha,
+    )
 
 
 @pytest.mark.parametrize("log_type", ("build", "runtime"))
