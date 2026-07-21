@@ -17,6 +17,7 @@ from mercury_release_control.staging import (
     ExistingStaging,
     GitHubRestApi,
     GitHubStagingPublisher,
+    GitSmartHttpRefPusher,
     StagingError,
     build_staging,
     publish_staging,
@@ -235,6 +236,96 @@ def test_github_publisher_fails_when_remote_verification_differs(tmp_path: Path)
         publisher.create("example/mercury-tools-staging", identity)
 
 
+@pytest.mark.parametrize(
+    ("probe_returncode", "probe_stdout", "expected_refs"),
+    [
+        (
+            2,
+            "",
+            (
+                "HEAD:refs/heads/main",
+                f"refs/tags/v0.3.0-rc.{REVIEWED_SHA[:12]}:"
+                f"refs/tags/v0.3.0-rc.{REVIEWED_SHA[:12]}",
+            ),
+        ),
+        (
+            0,
+            f"{'b' * 40}\trefs/heads/main\n",
+            (
+                f"refs/tags/v0.3.0-rc.{REVIEWED_SHA[:12]}:"
+                f"refs/tags/v0.3.0-rc.{REVIEWED_SHA[:12]}",
+            ),
+        ),
+    ],
+)
+def test_git_pusher_initializes_main_only_when_remote_main_is_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    probe_returncode: int,
+    probe_stdout: str,
+    expected_refs: tuple[str, ...],
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(arguments, **kwargs):
+        calls.append(tuple(arguments))
+        if "ls-remote" in arguments:
+            return subprocess.CompletedProcess(
+                arguments,
+                probe_returncode,
+                stdout=probe_stdout,
+                stderr="",
+            )
+        return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    GitSmartHttpRefPusher().push(
+        root=tmp_path,
+        repository="example/mercury-tools-staging",
+        tag=f"v0.3.0-rc.{REVIEWED_SHA[:12]}",
+        token=SecretStr("github-secret"),
+    )
+
+    assert "ls-remote" in calls[0]
+    push_index = calls[1].index("push")
+    assert calls[1][push_index + 3 :] == expected_refs
+
+
+@pytest.mark.parametrize(
+    ("probe_returncode", "probe_stdout"),
+    [
+        (0, ""),
+        (0, "not-a-ref\n"),
+        (2, f"{'b' * 40}\trefs/heads/main\n"),
+        (128, ""),
+    ],
+)
+def test_git_pusher_rejects_ambiguous_remote_main_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    probe_returncode: int,
+    probe_stdout: str,
+) -> None:
+    def fake_run(arguments, **kwargs):
+        return subprocess.CompletedProcess(
+            arguments,
+            probe_returncode,
+            stdout=probe_stdout,
+            stderr="",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(StagingError, match="^staging_push_failed$"):
+        GitSmartHttpRefPusher().push(
+            root=tmp_path,
+            repository="example/mercury-tools-staging",
+            tag=f"v0.3.0-rc.{REVIEWED_SHA[:12]}",
+            token=SecretStr("github-secret"),
+        )
+
+
 class FakeHttpResponse:
     def __init__(self, payload: dict) -> None:
         self._body = json.dumps(payload).encode()
@@ -409,3 +500,38 @@ def test_github_rest_api_rejects_noncanonical_remote_directory_mode() -> None:
                 }
             ],
         )
+
+
+def test_github_rest_api_accepts_bounded_large_blob_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = b"x" * (6 * 1024 * 1024 + 1)
+    blob_sha = _blob_sha(content)
+
+    def fake_urlopen(request: urllib.request.Request, timeout: int):
+        assert timeout == 20
+        assert request.full_url.endswith(f"/git/blobs/{blob_sha}")
+        return FakeHttpResponse(
+            {
+                "content": base64.b64encode(content).decode(),
+                "encoding": "base64",
+            }
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    snapshot = GitHubRestApi(token=SecretStr("github-secret"))._remote_snapshot(
+        "example/mercury-tools-staging",
+        [
+            {
+                "mode": "100644",
+                "path": "large.bin",
+                "sha": blob_sha,
+                "type": "blob",
+            }
+        ],
+    )
+
+    assert len(snapshot.entries) == 1
+    assert snapshot.entries[0].path == "large.bin"
+    assert snapshot.entries[0].content == content

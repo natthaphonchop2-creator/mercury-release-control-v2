@@ -39,6 +39,8 @@ _EMPTY_REPOSITORY_RESPONSE = {
     "status": "409",
 }
 _MAX_GITHUB_ERROR_BYTES = 16 * 1024
+_MAX_GITHUB_JSON_BYTES = 8 * 1024 * 1024
+_MAX_GITHUB_BLOB_JSON_BYTES = 96 * 1024 * 1024 + 64 * 1024
 
 
 class StagingError(RuntimeError):
@@ -175,18 +177,51 @@ class GitSmartHttpRefPusher:
                     "MERCURY_GITHUB_TOKEN": token.get_secret_value(),
                 }
             )
+            remote = f"https://github.com/{repository}.git"
+            base_arguments = [
+                str(_GIT),
+                "-c",
+                "credential.helper=",
+                "-c",
+                "core.hooksPath=/dev/null",
+            ]
+            probe = subprocess.run(
+                [
+                    *base_arguments,
+                    "ls-remote",
+                    "--exit-code",
+                    "--heads",
+                    remote,
+                    "refs/heads/main",
+                ],
+                cwd=root,
+                env=environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if (
+                len(probe.stdout) > 64 * 1024
+                or len(probe.stderr) > 64 * 1024
+                or (
+                    probe.returncode == 0
+                    and re.fullmatch(r"[0-9a-f]{40}\trefs/heads/main\n?", probe.stdout)
+                    is None
+                )
+                or (probe.returncode == 2 and probe.stdout)
+                or probe.returncode not in {0, 2}
+            ):
+                raise StagingError("staging_push_failed")
+            refs = [f"refs/tags/{tag}:refs/tags/{tag}"]
+            if probe.returncode == 2:
+                refs.insert(0, "HEAD:refs/heads/main")
             completed = subprocess.run(
                 [
-                    str(_GIT),
-                    "-c",
-                    "credential.helper=",
-                    "-c",
-                    "core.hooksPath=/dev/null",
+                    *base_arguments,
                     "push",
                     "--atomic",
-                    f"https://github.com/{repository}.git",
-                    "HEAD:refs/heads/main",
-                    f"refs/tags/{tag}:refs/tags/{tag}",
+                    remote,
+                    *refs,
                 ],
                 cwd=root,
                 env=environment,
@@ -286,7 +321,11 @@ class GitHubRestApi:
                     continue
                 if object_type != "blob" or mode not in {"100644", "100755"}:
                     raise StagingError("staging_remote_invalid")
-                blob = self._required("GET", f"/repos/{repository}/git/blobs/{object_sha}")
+                blob = self._required(
+                    "GET",
+                    f"/repos/{repository}/git/blobs/{object_sha}",
+                    maximum=_MAX_GITHUB_BLOB_JSON_BYTES,
+                )
                 if blob.get("encoding") != "base64":
                     raise StagingError("staging_remote_invalid")
                 content = _decode_blob(blob.get("content"), object_sha)
@@ -303,13 +342,27 @@ class GitHubRestApi:
             raise StagingError("staging_remote_invalid")
         return snapshot
 
-    def _required(self, method: str, path: str) -> dict[str, Any]:
-        payload = self._request(method, path)
+    def _required(
+        self,
+        method: str,
+        path: str,
+        *,
+        maximum: int = _MAX_GITHUB_JSON_BYTES,
+    ) -> dict[str, Any]:
+        payload = self._request(method, path, maximum=maximum)
         if payload is None:
             raise StagingError("staging_remote_invalid")
         return payload
 
-    def _request(self, method: str, path: str) -> dict[str, Any] | None:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        maximum: int = _MAX_GITHUB_JSON_BYTES,
+    ) -> dict[str, Any] | None:
+        if maximum not in {_MAX_GITHUB_JSON_BYTES, _MAX_GITHUB_BLOB_JSON_BYTES}:
+            raise StagingError("staging_remote_invalid")
         request = urllib.request.Request(
             f"{self._api_url}{path}",
             method=method,
@@ -322,7 +375,7 @@ class GitHubRestApi:
         )
         try:
             with urllib.request.urlopen(request, timeout=20) as response:
-                body = response.read(8 * 1024 * 1024 + 1)
+                body = response.read(maximum + 1)
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
                 return None
@@ -331,7 +384,7 @@ class GitHubRestApi:
             raise StagingError("staging_github_api_failed") from exc
         except (OSError, TimeoutError, urllib.error.URLError) as exc:
             raise StagingError("staging_github_api_failed") from exc
-        if len(body) > 8 * 1024 * 1024:
+        if len(body) > maximum:
             raise StagingError("staging_remote_invalid")
         try:
             payload = json.loads(body, object_pairs_hook=_unique_object)
