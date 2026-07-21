@@ -8,6 +8,11 @@ from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from mercury_release_control.release_profile import (
+    ReleaseProfileError,
+    release_profile_from_policy,
+)
+
 
 class PreflightError(RuntimeError):
     """A constant-code trusted preflight failure."""
@@ -29,6 +34,10 @@ class PreflightReceipt(BaseModel):
 def validate_preflight(
     policy: Mapping[str, object], snapshot: Mapping[str, object]
 ) -> PreflightReceipt:
+    try:
+        profile = release_profile_from_policy(policy)
+    except ReleaseProfileError as exc:
+        raise PreflightError("policy_schema_invalid") from exc
     control = _mapping(snapshot, "control", "preflight_snapshot_invalid")
     target = _mapping(snapshot, "target", "preflight_snapshot_invalid")
     _repository(
@@ -52,8 +61,16 @@ def validate_preflight(
         raise PreflightError("control_repository_protection_invalid")
     if target_repo.get("default_branch") != branch or target_repo.get("visibility") != "public":
         raise PreflightError("target_repository_protection_invalid")
-    _control_branch(policy, control)
-    environment = _control_environment(policy, control)
+    _control_branch(
+        policy,
+        control,
+        required_approving_review_count=profile.required_approving_review_count,
+    )
+    environment = _control_environment(
+        policy,
+        control,
+        prevent_self_review=profile.prevent_self_review,
+    )
     if (
         _mapping(target, "branch_protection", "target_branch_protection_invalid").get("protected")
         is not True
@@ -80,10 +97,12 @@ def validate_preflight(
         "branch": branch,
         "environment": policy.get("environment"),
         "release_tag_ruleset": policy.get("release_tag_ruleset"),
+        "required_approving_review_count": profile.required_approving_review_count,
         "required_environment_secrets": policy.get("required_environment_secrets"),
         "required_environment_variables": policy.get("required_environment_variables"),
         "required_reviewer_ids": reviewers,
         "required_status_checks": policy.get("required_status_checks"),
+        "prevent_self_review": profile.prevent_self_review,
     }
     digest = hashlib.sha256(
         json.dumps(configuration, separators=(",", ":"), sort_keys=True).encode()
@@ -92,7 +111,7 @@ def validate_preflight(
         admin_bypass_disabled=True,
         control_repository_id=_integer(policy.get("repository_id"), "policy_schema_invalid"),
         environment=environment,
-        prevent_self_review=True,
+        prevent_self_review=profile.prevent_self_review,
         protected_branch_only=True,
         required_configuration_sha256=digest,
         required_reviewers=len(reviewers),
@@ -118,19 +137,30 @@ def _repository(
         raise PreflightError(code)
 
 
-def _control_branch(policy: Mapping[str, object], control: Mapping[str, object]) -> None:
+def _control_branch(
+    policy: Mapping[str, object],
+    control: Mapping[str, object],
+    *,
+    required_approving_review_count: int,
+) -> None:
     protection = _mapping(control, "branch_protection", "control_branch_protection_invalid")
     if (
         protection.get("protected") is not True
         or protection.get("enforce_admins") is not True
-        or protection.get("required_approving_review_count") != 1
+        or protection.get("required_approving_review_count")
+        != required_approving_review_count
         or protection.get("required_status_checks_strict") is not True
         or protection.get("required_status_checks") != policy.get("required_status_checks")
     ):
         raise PreflightError("control_branch_protection_invalid")
 
 
-def _control_environment(policy: Mapping[str, object], control: Mapping[str, object]) -> str:
+def _control_environment(
+    policy: Mapping[str, object],
+    control: Mapping[str, object],
+    *,
+    prevent_self_review: bool,
+) -> str:
     expected = _string(policy.get("environment"), "policy_schema_invalid")
     environment = _mapping(control, "environment", "control_environment_protection_invalid")
     deployment = _mapping(
@@ -142,7 +172,7 @@ def _control_environment(policy: Mapping[str, object], control: Mapping[str, obj
     if (
         environment.get("name") != expected
         or environment.get("reviewer_ids") != reviewers
-        or environment.get("prevent_self_review") is not True
+        or environment.get("prevent_self_review") is not prevent_self_review
         or environment.get("can_admins_bypass") is not False
         or deployment.get("protected_branches") is not True
         or deployment.get("custom_branch_policies") is not False
