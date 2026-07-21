@@ -164,16 +164,35 @@ def test_happy_path_applies_body_and_history_record_in_one_transaction() -> None
 
 
 def test_history_contract_binds_exact_pre_and_post_digests() -> None:
+    production_versions = (
+        "20260709225539",
+        "20260710055630",
+        "20260710055639",
+        "20260710055815",
+        "20260711144412",
+        "20260713014321",
+        "20260713100000",
+        "20260713101000",
+        "20260713102000",
+        "20260714120000",
+        "20260715100000",
+        "20260716100000",
+    )
+    pre_digest = hashlib.sha256(("\n".join(production_versions) + "\n").encode()).hexdigest()
+    post_digest = hashlib.sha256(
+        ("\n".join((*production_versions, migration.MIGRATION_VERSION)) + "\n").encode()
+    ).hexdigest()
+
     assert migration.HistorySnapshot.pre_migration() == migration.HistorySnapshot(
         count=12,
         latest="20260716100000",
-        sha256="df1a5ed4bea121d74a7c17607015d00d248c5401eedad980f1c53b3680adcb40",
+        sha256=pre_digest,
         target_present=False,
     )
     assert migration.HistorySnapshot.post_migration() == migration.HistorySnapshot(
         count=13,
         latest="20260719120000",
-        sha256="324cff822a5a4d8e4a2554fa875471dec2345676fe8768c8ffe7cff283ffe3fb",
+        sha256=post_digest,
         target_present=True,
     )
 
