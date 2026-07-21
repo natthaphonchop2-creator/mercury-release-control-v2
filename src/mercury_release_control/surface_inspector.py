@@ -1735,6 +1735,7 @@ def _inspect_staging(
     reviewed_sha: str,
     token: str,
     candidate_clone: Path,
+    public_mcp_base_url: str,
     environment: Mapping[str, str],
 ) -> tuple[Mapping[str, object], tuple[tuple[str, str, str], ...]]:
     clone = root / "staging.git"
@@ -1794,7 +1795,7 @@ def _inspect_staging(
     staging_snapshot = _archive_snapshot(staging_archive)
     local_tools, validation_identities = _validate_staging_static(
         staging_snapshot,
-        public_mcp_base_url=environment["MERCURY_PUBLIC_MCP_URL"],
+        public_mcp_base_url=public_mcp_base_url,
     )
     return (
         {
@@ -1886,6 +1887,7 @@ def _inspect_git_and_staging(
             reviewed_sha=reviewed_sha,
             token=environment_values["MERCURY_STAGING_REPOSITORY_TOKEN"],
             candidate_clone=clone,
+            public_mcp_base_url=environment_values["MERCURY_PUBLIC_MCP_URL"],
             environment=process_environment,
         )
         all_hashes.extend(

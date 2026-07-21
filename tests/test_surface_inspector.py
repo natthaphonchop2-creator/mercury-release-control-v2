@@ -270,6 +270,62 @@ def test_staging_static_requires_exact_remote_public_mcp_endpoint(
         )
 
 
+def test_git_staging_propagates_public_mcp_url_outside_minimal_process_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[str] = []
+    clone = tmp_path / "clone"
+    clone.mkdir()
+    config = tmp_path / "gitleaks.toml"
+    config.write_text("[extend]\nuseDefault = true\n", encoding="utf-8")
+
+    monkeypatch.setattr(inspector, "_clone_candidate", lambda *_args, **_kwargs: clone)
+    monkeypatch.setattr(
+        inspector,
+        "_materialize_trusted_gitleaks_config",
+        lambda *_args, **_kwargs: config,
+    )
+    monkeypatch.setattr(inspector, "_scan_git", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(inspector, "_git_output", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(inspector, "_scan_payloads", lambda *_args, **_kwargs: [])
+
+    def staging_probe(
+        _root: Path,
+        *,
+        public_mcp_base_url: str,
+        environment: dict[str, str],
+        **_kwargs: object,
+    ) -> tuple[dict[str, object], tuple[tuple[str, str, str], ...]]:
+        assert "MERCURY_PUBLIC_MCP_URL" not in environment
+        observed.append(public_mcp_base_url)
+        return {}, ()
+
+    monkeypatch.setattr(inspector, "_inspect_staging", staging_probe)
+
+    inspector._inspect_git_and_staging(
+        policy={
+            "reviewed_repository": "example/mercury-tools",
+            "staging_repository": "example/mercury-tools-staging",
+        },
+        reviewed_sha="a" * 40,
+        staging_ref="v0.3.0-rc.aaaaaaaaaaaa",
+        environment_values={
+            "INSPECTOR_GIT": "/usr/bin/git",
+            "INSPECTOR_GITLEAKS": "/usr/bin/true",
+            "INSPECTOR_TRUFFLEHOG": "/usr/bin/true",
+            "MERCURY_PUBLIC_MCP_URL": "https://mercury.example",
+            "MERCURY_STAGING_REPOSITORY_TOKEN": "staging-token",
+            "MERCURY_TARGET_REPOSITORY_READ_TOKEN": "read-token",
+        },
+        gitleaks=Path("/usr/bin/true"),
+        trufflehog=Path("/usr/bin/true"),
+        allowlist=frozenset(),
+    )
+
+    assert observed == ["https://mercury.example"]
+
+
 @pytest.mark.parametrize(
     "server",
     (
