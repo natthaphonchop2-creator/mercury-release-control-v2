@@ -18,7 +18,7 @@ def _payload() -> dict[str, object]:
     return {
         "artifacts": [
             {
-                "name": "mercury_tools-0.2.2-py3-none-any.whl",
+                "name": "mercury_tools-0.3.0-py3-none-any.whl",
                 "sha256": "3" * 64,
                 "size": 123,
             }
@@ -29,7 +29,7 @@ def _payload() -> dict[str, object]:
             "repository_id": 84,
             "run_attempt": 2,
             "run_id": 2002,
-            "workflow_path": ".github/workflows/release-v0.2.2.yml",
+            "workflow_path": ".github/workflows/release-v0.3.0.yml",
         },
         "original_release_control": {
             "artifact_digest": "4" * 64,
@@ -44,12 +44,12 @@ def _payload() -> dict[str, object]:
         "release_bundle": {
             "artifact_digest": "7" * 64,
             "artifact_id": 303,
-            "name": "mercury-v0.2.2-release-artifacts-2002-attempt-2",
+            "name": "mercury-v0.3.0-release-artifacts-2002-attempt-2",
         },
         "reviewed_sha": REVIEWED_SHA,
         "schema_version": 3,
-        "staging_ref": f"v0.2.2-rc.{REVIEWED_SHA[:12]}",
-        "version": "0.2.2",
+        "staging_ref": f"v0.3.0-rc.{REVIEWED_SHA[:12]}",
+        "version": "0.3.0",
     }
 
 
@@ -58,7 +58,13 @@ def _write_inputs(tmp_path):
     handoff.write_text(json.dumps(_payload(), sort_keys=True), encoding="utf-8")
     policy = tmp_path / "policy.json"
     policy.write_text(
-        json.dumps({"repository_id": 42, "reviewed_repository_id": 84}),
+        json.dumps(
+            {
+                "release": {"tag": "v0.3.0", "version": "0.3.0"},
+                "repository_id": 42,
+                "reviewed_repository_id": 84,
+            }
+        ),
         encoding="utf-8",
     )
     return handoff, policy

@@ -8,6 +8,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from mercury_release_control.release_profile import (
+    SUPPORTED_RELEASE_BUNDLE_PATTERN,
+    SUPPORTED_RELEASE_WORKFLOW_PATTERN,
+    SUPPORTED_STAGING_REF_PATTERN,
+    SUPPORTED_VERSION_PATTERN,
+    ReleaseProfileError,
+    release_profile,
+)
+
 
 class HandoffError(RuntimeError):
     """A constant-code release-ready handoff failure."""
@@ -32,7 +41,8 @@ class ReleaseIdentity(_HandoffModel):
     release_bundle_artifact_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     release_bundle_artifact_id: int = Field(gt=0)
     reviewed_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
-    staging_ref: str = Field(pattern=r"^v0\.2\.2-rc\.[0-9a-f]{12}$")
+    staging_ref: str = Field(pattern=SUPPORTED_STAGING_REF_PATTERN)
+    version: str = Field(pattern=SUPPORTED_VERSION_PATTERN)
 
 
 class ReleaseArtifact(_HandoffModel):
@@ -45,7 +55,7 @@ class MercuryWorkflowIdentity(_HandoffModel):
     repository_id: int = Field(gt=0)
     run_attempt: int = Field(gt=0)
     run_id: int = Field(gt=0)
-    workflow_path: Literal[".github/workflows/release-v0.2.2.yml"]
+    workflow_path: str = Field(pattern=SUPPORTED_RELEASE_WORKFLOW_PATTERN)
 
 
 class OriginalControlIdentity(_HandoffModel):
@@ -61,9 +71,7 @@ class OriginalControlIdentity(_HandoffModel):
 class ReleaseBundleIdentity(_HandoffModel):
     artifact_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     artifact_id: int = Field(gt=0)
-    name: str = Field(
-        pattern=r"^mercury-v0\.2\.2-release-artifacts-[1-9][0-9]*-attempt-[1-9][0-9]*$"
-    )
+    name: str = Field(pattern=SUPPORTED_RELEASE_BUNDLE_PATTERN)
 
 
 class VerifiedHandoff(_HandoffModel):
@@ -76,8 +84,8 @@ class VerifiedHandoff(_HandoffModel):
     release_bundle: ReleaseBundleIdentity
     reviewed_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
     schema_version: Literal[3]
-    staging_ref: str = Field(pattern=r"^v0\.2\.2-rc\.[0-9a-f]{12}$")
-    version: Literal["0.2.2"]
+    staging_ref: str = Field(pattern=SUPPORTED_STAGING_REF_PATTERN)
+    version: str = Field(pattern=SUPPORTED_VERSION_PATTERN)
 
 
 def verify_handoff(
@@ -86,6 +94,10 @@ def verify_handoff(
     expected: ReleaseIdentity,
     now: datetime,
 ) -> VerifiedHandoff:
+    try:
+        profile = release_profile(expected.version)
+    except ReleaseProfileError as exc:
+        raise HandoffError("handoff_release_identity_mismatch") from exc
     try:
         encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True)
         handoff = VerifiedHandoff.model_validate_json(encoded)
@@ -107,17 +119,19 @@ def verify_handoff(
         mercury.repository_id != expected.mercury_repository_id
         or mercury.run_id != expected.mercury_run_id
         or mercury.run_attempt != expected.mercury_run_attempt
+        or mercury.workflow_path != profile.release_workflow_path
         or handoff.release_bundle.artifact_id != expected.release_bundle_artifact_id
         or handoff.release_bundle.artifact_digest != expected.release_bundle_artifact_digest
         or handoff.release_bundle.name
-        != (f"mercury-v0.2.2-release-artifacts-{mercury.run_id}-attempt-{mercury.run_attempt}")
+        != profile.release_bundle_name(mercury.run_id, mercury.run_attempt)
     ):
         raise HandoffError("handoff_mercury_identity_mismatch")
     if (
-        handoff.reviewed_sha != expected.reviewed_sha
+        handoff.version != profile.version
+        or handoff.reviewed_sha != expected.reviewed_sha
         or handoff.public_tree_digest != expected.public_tree_digest
         or handoff.staging_ref != expected.staging_ref
-        or handoff.staging_ref != f"v0.2.2-rc.{handoff.reviewed_sha[:12]}"
+        or handoff.staging_ref != profile.staging_ref(handoff.reviewed_sha)
     ):
         raise HandoffError("handoff_release_identity_mismatch")
     observed_at = _utc(now)

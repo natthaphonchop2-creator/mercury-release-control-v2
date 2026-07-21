@@ -19,31 +19,12 @@ from mercury_release_control.provider_inspector import (
     inspect_supabase_connection,
     validate_database_url,
 )
-
-_EXPECTED_TOOLS = frozenset(
-    {
-        "check_flow_syntax",
-        "connector_capabilities",
-        "connector_status",
-        "create_public_workspace",
-        "flow_cheat_sheet",
-        "get_document",
-        "get_public_workspace",
-        "inspect_flow_files",
-        "list_connectors",
-        "list_workspace_flows",
-        "retrieve_context_pack",
-        "retrieve_workspace_context_pack",
-        "run_accounting_skill",
-        "run_flow",
-        "run_flow_files",
-        "run_mercury_flow",
-        "run_workspace_flow",
-        "save_workspace_flow",
-        "search_knowledge",
-        "start_connector_setup",
-    }
+from mercury_release_control.release_profile import (
+    ReleaseProfile,
+    ReleaseProfileError,
+    release_profile_from_policy,
 )
+
 _CREDENTIAL_KEY = re.compile(
     r"(?:api[_-]?key|authorization|client[_-]?(?:id|secret)|credential|password|secret|token)",
     re.IGNORECASE,
@@ -90,8 +71,12 @@ class HostedProviderCollector:
             not isinstance(environment[name], str) or not environment[name] for name in required
         ):
             raise InspectionError("provider_environment_invalid")
-        render, public_mcp = self._render_and_mcp(environment, reviewed_sha)
-        supabase = self._supabase(policy, environment)
+        try:
+            profile = release_profile_from_policy(policy)
+        except ReleaseProfileError as exc:
+            raise InspectionError("provider_policy_invalid") from exc
+        render, public_mcp = self._render_and_mcp(environment, reviewed_sha, profile)
+        supabase = self._supabase(policy, environment, profile)
         flowaccount = self._flowaccount(environment)
         return {
             "flowaccount": flowaccount,
@@ -101,7 +86,10 @@ class HostedProviderCollector:
         }
 
     def _render_and_mcp(
-        self, environment: Mapping[str, str], reviewed_sha: str
+        self,
+        environment: Mapping[str, str],
+        reviewed_sha: str,
+        profile: ReleaseProfile,
     ) -> tuple[dict[str, object], dict[str, object]]:
         public_url = _https_base(environment["MERCURY_PUBLIC_MCP_URL"])
         render_url = _https_base(environment["RENDER_API_URL"])
@@ -137,7 +125,7 @@ class HostedProviderCollector:
         if (
             not isinstance(status, dict)
             or status.get("status") != "ok"
-            or status.get("version") != "0.2.2"
+            or status.get("version") != profile.version
             or status.get("deployment_commit") != reviewed_sha
         ):
             raise InspectionError("render_status_invalid")
@@ -150,16 +138,16 @@ class HostedProviderCollector:
             f"{public_url}/api/cloud/v1/catalog/actions", headers=public_headers
         )
         actions = catalog.get("actions") if isinstance(catalog, dict) else None
-        if not isinstance(actions, list) or len(actions) != 254:
+        if not isinstance(actions, list) or len(actions) != profile.catalog_action_count:
             raise InspectionError("public_mcp_catalog_inventory_invalid")
-        mcp = _McpProbe(endpoint=endpoint, token=bearer)
+        mcp = _McpProbe(endpoint=endpoint, token=bearer, version=profile.version)
         initialized = mcp.initialize()
         server = initialized.get("serverInfo")
         if not isinstance(server, dict) or server.get("name") != "Mercury Tools":
             raise InspectionError("public_mcp_initialize_invalid")
         tools = mcp.list_tools()
         names = {tool.get("name") for tool in tools if isinstance(tool, dict)}
-        if len(tools) != 20 or names != _EXPECTED_TOOLS:
+        if len(tools) != profile.hosted_tool_count or names != profile.hosted_tool_names:
             raise InspectionError("public_mcp_tool_inventory_invalid")
         if any(_contains_credential_key(tool.get("inputSchema")) for tool in tools):
             raise InspectionError("public_mcp_boundary_invalid")
@@ -184,7 +172,7 @@ class HostedProviderCollector:
                 "hosted_tool_count": len(tools),
                 "logs_scanned": True,
                 "status": "live",
-                "version": "0.2.2",
+                "version": profile.version,
             },
             {
                 "catalog_action_count": len(actions),
@@ -197,7 +185,10 @@ class HostedProviderCollector:
         )
 
     def _supabase(
-        self, policy: Mapping[str, object], environment: Mapping[str, str]
+        self,
+        policy: Mapping[str, object],
+        environment: Mapping[str, str],
+        profile: ReleaseProfile,
     ) -> dict[str, object]:
         supabase = policy.get("supabase")
         if not isinstance(supabase, dict):
@@ -235,6 +226,7 @@ class HostedProviderCollector:
                 expected_tables=sorted(tables),
                 expected_functions=expected_functions,
                 expected_migration_id=migration_id,
+                version=profile.version,
             )
             observed["project_ref_sha256"] = _sha256(project_ref)
             return observed
@@ -295,8 +287,9 @@ def _render_log_url(
 
 
 class _McpProbe:
-    def __init__(self, *, endpoint: str, token: str) -> None:
+    def __init__(self, *, endpoint: str, token: str, version: str) -> None:
         self._endpoint = endpoint
+        self._version = version
         self._headers = {
             "Accept": "application/json, text/event-stream",
             "Authorization": f"Bearer {token}",
@@ -310,7 +303,10 @@ class _McpProbe:
             "initialize",
             {
                 "capabilities": {},
-                "clientInfo": {"name": "mercury-release-control-v2", "version": "0.2.2"},
+                "clientInfo": {
+                    "name": "mercury-release-control-v2",
+                    "version": self._version,
+                },
                 "protocolVersion": "2025-03-26",
             },
         )

@@ -1,4 +1,4 @@
-"""Trusted CLI entrypoints used by the v0.2.2 attestation workflow."""
+"""Trusted CLI entrypoints used by supported release attestation workflows."""
 
 from __future__ import annotations
 
@@ -32,6 +32,10 @@ from mercury_release_control.provider_inspector import (
     InspectionError,
     ProviderEvidence,
     inspect_providers,
+)
+from mercury_release_control.release_profile import (
+    ReleaseProfileError,
+    release_profile_from_policy,
 )
 from mercury_release_control.staging import (
     ExistingStaging,
@@ -67,6 +71,7 @@ def _parser() -> argparse.ArgumentParser:
     attest.add_argument("--control-commit", required=True)
     attest.add_argument("--identity", type=Path, required=True)
     attest.add_argument("--output", type=Path, required=True)
+    attest.add_argument("--policy", type=Path, required=True)
     attest.add_argument("--preflight", type=Path, required=True)
     attest.add_argument("--providers", type=Path, required=True)
     attest.add_argument("--run-attempt", type=int, required=True)
@@ -92,6 +97,10 @@ def run_stage(
     token: SecretStr,
 ) -> None:
     policy = _mapping(_load_json(policy_path))
+    try:
+        profile = release_profile_from_policy(policy)
+    except ReleaseProfileError as exc:
+        raise WorkflowError("workflow_policy_invalid") from exc
     repository = policy.get("staging_repository")
     if not isinstance(repository, str):
         raise WorkflowError("workflow_policy_invalid")
@@ -103,6 +112,7 @@ def run_stage(
         archive_bytes=archive,
         reviewed_sha=reviewed_sha,
         output=output,
+        version=profile.version,
     )
     published = publish_staging(
         identity=identity,
@@ -136,6 +146,7 @@ def run_attest(
     control_commit: str,
     identity_path: Path,
     output: Path,
+    policy_path: Path,
     preflight_path: Path,
     providers_path: Path,
     run_attempt: int,
@@ -143,6 +154,11 @@ def run_attest(
     surface_evidence_path: Path,
     now: datetime,
 ) -> None:
+    policy = _mapping(_load_json(policy_path))
+    try:
+        profile = release_profile_from_policy(policy)
+    except ReleaseProfileError as exc:
+        raise WorkflowError("workflow_policy_invalid") from exc
     preflight = PreflightReceipt.model_validate(_load_json(preflight_path))
     providers = ProviderEvidence.model_validate(_load_json(providers_path))
     staging = _load_staging(identity_path)
@@ -156,6 +172,7 @@ def run_attest(
         run_attempt=run_attempt,
         surface_evidence=surface_evidence,
         now=now,
+        version=profile.version,
     )
     _write_new(output, attestation.model_dump(mode="json"))
 
@@ -268,6 +285,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 control_commit=args.control_commit,
                 identity_path=args.identity,
                 output=args.output,
+                policy_path=args.policy,
                 preflight_path=args.preflight,
                 providers_path=args.providers,
                 run_attempt=args.run_attempt,

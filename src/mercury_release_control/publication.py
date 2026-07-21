@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import Protocol
 
 from mercury_release_control.handoff import ReleaseArtifact, VerifiedHandoff
+from mercury_release_control.release_profile import ReleaseProfileError, release_profile
 
 
 class PublicationError(RuntimeError):
@@ -96,8 +97,16 @@ def publication_plan(
     *,
     release_notes: str,
 ) -> PublicationPlan:
+    try:
+        profile = release_profile(handoff.version)
+    except ReleaseProfileError as exc:
+        raise PublicationError("publication_plan_invalid") from exc
+    mercury = handoff.mercury_workflow
     if (
-        handoff.version != "0.2.2"
+        mercury.workflow_path != profile.release_workflow_path
+        or handoff.staging_ref != profile.staging_ref(handoff.reviewed_sha)
+        or handoff.release_bundle.name
+        != profile.release_bundle_name(mercury.run_id, mercury.run_attempt)
         or not isinstance(release_notes, str)
         or not release_notes.strip()
         or release_notes != release_notes.strip()
@@ -107,9 +116,9 @@ def publication_plan(
     return PublicationPlan(
         assets=handoff.artifacts,
         commit=handoff.reviewed_sha,
-        release_name="Mercury v0.2.2",
+        release_name=profile.release_name,
         release_notes=release_notes,
-        tag="v0.2.2",
+        tag=profile.tag,
     )
 
 

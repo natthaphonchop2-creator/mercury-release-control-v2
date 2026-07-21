@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/publish-v0.2.2.yml"
+WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/publish-v0.3.0.yml"
 ACTION_PIN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$")
 
 

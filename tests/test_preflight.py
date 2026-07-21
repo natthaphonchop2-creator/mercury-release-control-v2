@@ -31,7 +31,8 @@ def policy() -> dict[str, object]:
         "required_environment_variables": ["TARGET_REPOSITORY"],
         "required_reviewer_ids": [1001],
         "required_status_checks": [
-            {"app_id": 15368, "context": "Mercury release-control CI / required"}
+            {"app_id": 15368, "context": "required"},
+            {"app_id": 15368, "context": "verify-candidate-as-data"},
         ],
         "reviewed_repository": "example/mercury-tools",
         "reviewed_repository_id": 84,
@@ -114,6 +115,12 @@ def test_preflight_returns_only_sanitized_protection_receipt(
         (
             lambda snapshot: snapshot["control"]["environment"].update(prevent_self_review=True),
             "control_environment_protection_invalid",
+        ),
+        (
+            lambda snapshot: snapshot["control"]["branch_protection"].update(
+                required_status_checks=[{"app_id": 15368, "context": "required"}]
+            ),
+            "control_branch_protection_invalid",
         ),
         (
             lambda snapshot: snapshot["target"]["immutable_releases"].update(enabled=False),

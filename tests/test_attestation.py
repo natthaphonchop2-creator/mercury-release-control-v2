@@ -25,14 +25,14 @@ def _provider_evidence():
             "render": {
                 "catalog_action_count": 254,
                 "commit": REVIEWED_SHA,
-                "hosted_tool_count": 20,
+                "hosted_tool_count": 24,
                 "logs_scanned": True,
                 "status": "live",
-                "version": "0.2.2",
+                "version": "0.3.0",
             },
             "supabase": {
-                "function_count": 10,
-                "migration_id": "20260716100000",
+                "function_count": 11,
+                "migration_id": "20260719120000",
                 "project_ref_sha256": "1" * 64,
                 "rag_identity_count": 254,
                 "read_only": True,
@@ -47,14 +47,14 @@ def _provider_evidence():
             "public_mcp": {
                 "catalog_action_count": 254,
                 "flowaccount_citations": 1,
-                "hosted_tool_count": 20,
+                "hosted_tool_count": 24,
                 "peak_citations": 1,
                 "status": 200,
                 "write_tools_exposed": False,
             },
         },
         reviewed_sha=REVIEWED_SHA,
-        version="0.2.2",
+        version="0.3.0",
     )
 
 
@@ -75,7 +75,7 @@ def _staging() -> ExistingStaging:
     return ExistingStaging(
         reviewed_sha=REVIEWED_SHA,
         staging_commit_sha="b" * 40,
-        tag=f"v0.2.2-rc.{REVIEWED_SHA[:12]}",
+        tag=f"v0.3.0-rc.{REVIEWED_SHA[:12]}",
         tag_object_sha="c" * 40,
         tree_digest="d" * 64,
     )
@@ -128,13 +128,14 @@ def test_attestation_is_exact_fresh_and_sanitized() -> None:
         run_attempt=1,
         now=NOW,
         surface_evidence=_surface_evidence(),
+        version="0.3.0",
     )
 
-    assert attestation.version == "0.2.2"
+    assert attestation.version == "0.3.0"
     assert attestation.staging.repository == (
         "natthaphonchop2-creator/mercury-tools-staging"
     )
-    assert attestation.staging.ref == f"v0.2.2-rc.{REVIEWED_SHA[:12]}"
+    assert attestation.staging.ref == f"v0.3.0-rc.{REVIEWED_SHA[:12]}"
     assert attestation.public_tree_digest == "d" * 64
     assert tuple(item.surface for item in attestation.surfaces) == tuple(
         item["surface"] for item in _surface_evidence()["surfaces"]
@@ -155,6 +156,7 @@ def test_attestation_schema_rejects_unknown_fields() -> None:
         run_attempt=1,
         now=NOW,
         surface_evidence=_surface_evidence(),
+        version="0.3.0",
     )
     payload = attestation.model_dump()
     payload["raw_provider_payload"] = {"access_token": "forbidden"}
@@ -173,6 +175,7 @@ def test_attestation_expires_and_rejects_identity_mismatch() -> None:
         run_attempt=1,
         now=NOW,
         surface_evidence=_surface_evidence(),
+        version="0.3.0",
     )
 
     with pytest.raises(AttestationError, match="^attestation_expired$"):

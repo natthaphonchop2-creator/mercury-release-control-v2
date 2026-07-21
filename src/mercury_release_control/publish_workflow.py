@@ -30,6 +30,10 @@ from mercury_release_control.publication import (
     publication_plan,
     publish_release,
 )
+from mercury_release_control.release_profile import (
+    ReleaseProfileError,
+    release_profile_from_policy,
+)
 from mercury_release_control.workflow import WorkflowError, _load_json, _write_new
 
 
@@ -76,6 +80,10 @@ def inspect_handoff(
     policy = _load_json(policy_path)
     if not isinstance(policy, dict):
         raise WorkflowError("publication_policy_invalid")
+    try:
+        profile = release_profile_from_policy(policy)
+    except ReleaseProfileError as exc:
+        raise WorkflowError("publication_policy_invalid") from exc
     control_repository_id = policy.get("repository_id")
     mercury_repository_id = policy.get("reviewed_repository_id")
     if (
@@ -109,6 +117,7 @@ def inspect_handoff(
             release_bundle_artifact_id=release_bundle_artifact_id,
             reviewed_sha=reviewed_sha,
             staging_ref=provisional.staging_ref,
+            version=profile.version,
         )
     except ValidationError as exc:
         raise HandoffError("handoff_schema_invalid") from exc
@@ -133,8 +142,12 @@ def run_publication(
     policy = _load_json(policy_path)
     if not isinstance(policy, dict):
         raise WorkflowError("publication_policy_invalid")
+    try:
+        profile = release_profile_from_policy(policy)
+    except ReleaseProfileError as exc:
+        raise WorkflowError("publication_policy_invalid") from exc
     repository = policy.get("reviewed_repository")
-    if not isinstance(repository, str):
+    if not isinstance(repository, str) or expected.version != profile.version:
         raise WorkflowError("publication_policy_invalid")
     handoff_body = _read_regular(handoff_path, 2 * 1024 * 1024)
     if hashlib.sha256(handoff_body).hexdigest() != handoff_payload_sha256:
@@ -151,6 +164,7 @@ def run_publication(
     validate_attestation(attestation, now=now)
     if (
         attestation.reviewed_sha != expected.reviewed_sha
+        or attestation.version != expected.version
         or attestation.public_tree_digest != expected.public_tree_digest
         or attestation.staging.ref != expected.staging_ref
         or attestation.workflow.repository_id != expected.control_repository_id
@@ -161,7 +175,7 @@ def run_publication(
         raise AttestationError("attestation_identity_mismatch")
     assets = _load_assets(assets_path, handoff.artifacts)
     try:
-        release_notes = release_notes_path.read_text(encoding="utf-8")
+        release_notes = release_notes_path.read_text(encoding="utf-8").removesuffix("\n")
     except (OSError, UnicodeError) as exc:
         raise PublicationError("publication_notes_invalid") from exc
     plan = publication_plan(handoff, release_notes=release_notes)

@@ -56,7 +56,11 @@ class FakeGitHub:
                         {
                             "app_id": 15368,
                             "context": "required",
-                        }
+                        },
+                        {
+                            "app_id": 15368,
+                            "context": "verify-candidate-as-data",
+                        },
                     ],
                     "strict": True,
                 },
@@ -98,6 +102,10 @@ def test_remote_snapshot_collects_only_preflight_fields() -> None:
     assert snapshot["control"]["repository"]["id"] == 42
     assert snapshot["control"]["environment"]["prevent_self_review"] is False
     assert snapshot["control"]["branch_protection"]["required_approving_review_count"] == 0
+    assert snapshot["control"]["branch_protection"]["required_status_checks"] == [
+        {"app_id": 15368, "context": "required"},
+        {"app_id": 15368, "context": "verify-candidate-as-data"},
+    ]
     assert snapshot["control"]["environment"]["reviewer_ids"] == [1001]
     assert snapshot["target"]["repository"]["id"] == 84
     assert snapshot["target"]["release_tag_rulesets"][0]["target"] == "tag"
@@ -123,4 +131,23 @@ def test_remote_snapshot_rejects_missing_nested_prevent_self_review() -> None:
     github.get = get  # type: ignore[method-assign]
 
     with pytest.raises(PreflightError, match="^github_environment_invalid$"):
+        collect_remote_snapshot(_policy(), github)
+
+
+def test_remote_snapshot_rejects_malformed_pull_review_rule() -> None:
+    github = FakeGitHub()
+    original_get = github.get
+
+    def get(path: str):
+        response = original_get(path)
+        if path == "/repos/example/control/branches/main/protection":
+            response = dict(response)
+            response["required_pull_request_reviews"] = {
+                "required_approving_review_count": 0
+            }
+        return response
+
+    github.get = get  # type: ignore[method-assign]
+
+    with pytest.raises(PreflightError, match="^github_branch_protection_invalid$"):
         collect_remote_snapshot(_policy(), github)

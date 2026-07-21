@@ -60,9 +60,10 @@ def test_staging_is_one_unrelated_commit_with_exact_public_tree(tmp_path: Path) 
         archive_bytes=_archive(),
         reviewed_sha=REVIEWED_SHA,
         output=output,
+        version="0.3.0",
     )
 
-    assert identity.tag == f"v0.2.2-rc.{REVIEWED_SHA[:12]}"
+    assert identity.tag == f"v0.3.0-rc.{REVIEWED_SHA[:12]}"
     assert (
         identity.tree_digest == "ca938b2aaaf87fbc8d9a92fac7e0f355070da77e8588c429742d8d5699084d7a"
     )
@@ -77,7 +78,12 @@ def test_staging_rejects_existing_destination(tmp_path: Path) -> None:
     output = tmp_path / "staging"
     output.mkdir()
     with pytest.raises(StagingError, match="^staging_destination_exists$"):
-        build_staging(archive_bytes=_archive(), reviewed_sha=REVIEWED_SHA, output=output)
+        build_staging(
+            archive_bytes=_archive(),
+            reviewed_sha=REVIEWED_SHA,
+            output=output,
+            version="0.3.0",
+        )
 
 
 def test_staging_ignores_caller_git_template_and_hooks(
@@ -100,6 +106,7 @@ def test_staging_ignores_caller_git_template_and_hooks(
         archive_bytes=_archive(),
         reviewed_sha=REVIEWED_SHA,
         output=tmp_path / "staging",
+        version="0.3.0",
     )
 
     assert not marker.exists()
@@ -120,7 +127,10 @@ class FakePublisher:
 
 def test_staging_publication_is_idempotent_only_for_exact_identity(tmp_path: Path) -> None:
     identity = build_staging(
-        archive_bytes=_archive(), reviewed_sha=REVIEWED_SHA, output=tmp_path / "staging"
+        archive_bytes=_archive(),
+        reviewed_sha=REVIEWED_SHA,
+        output=tmp_path / "staging",
+        version="0.3.0",
     )
     publisher = FakePublisher()
     first = publish_staging(
@@ -177,7 +187,10 @@ class FakeRefPusher:
 
 def test_github_publisher_pushes_refs_then_verifies_remote_identity(tmp_path: Path) -> None:
     identity = build_staging(
-        archive_bytes=_archive(), reviewed_sha=REVIEWED_SHA, output=tmp_path / "staging"
+        archive_bytes=_archive(),
+        reviewed_sha=REVIEWED_SHA,
+        output=tmp_path / "staging",
+        version="0.3.0",
     )
     api = FakeGitHubApi()
     pusher = FakeRefPusher()
@@ -205,7 +218,10 @@ def test_github_publisher_pushes_refs_then_verifies_remote_identity(tmp_path: Pa
 
 def test_github_publisher_fails_when_remote_verification_differs(tmp_path: Path) -> None:
     identity = build_staging(
-        archive_bytes=_archive(), reviewed_sha=REVIEWED_SHA, output=tmp_path / "staging"
+        archive_bytes=_archive(),
+        reviewed_sha=REVIEWED_SHA,
+        output=tmp_path / "staging",
+        version="0.3.0",
     )
     api = FakeGitHubApi(ExistingStaging.from_identity(identity, tree_digest="0" * 64))
     publisher = GitHubStagingPublisher(
@@ -243,7 +259,7 @@ def test_github_rest_api_reconstructs_and_verifies_remote_public_tree(
     commit_sha = "b" * 40
     tag_object_sha = "c" * 40
     tree_sha = "d" * 40
-    tag = f"v0.2.2-rc.{reviewed_sha[:12]}"
+    tag = f"v0.3.0-rc.{reviewed_sha[:12]}"
     tree_digest = "ca938b2aaaf87fbc8d9a92fac7e0f355070da77e8588c429742d8d5699084d7a"
     contents = {
         "README.md": b"Mercury public tree fixture\n",

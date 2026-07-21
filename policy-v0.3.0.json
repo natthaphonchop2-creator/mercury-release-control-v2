@@ -20,12 +20,12 @@
       "ref_name": {
         "exclude": [],
         "include": [
-          "refs/tags/v0.2.2"
+          "refs/tags/v0.3.0"
         ]
       }
     },
     "enforcement": "active",
-    "name": "Mercury v0.2.2 immutable release tag",
+    "name": "Mercury v0.3.0 immutable release tag",
     "rules": [
       {
         "type": "deletion"
@@ -37,7 +37,7 @@
     "target": "tag"
   },
   "required_reviewer_ids": [
-    240973204
+    284163704
   ],
   "required_environment_secrets": [
     "FLOWACCOUNT_SANDBOX_CLIENT_ID",
@@ -65,7 +65,11 @@
   "required_status_checks": [
     {
       "app_id": 15368,
-      "context": "Mercury release-control v2 CI / required"
+      "context": "required"
+    },
+    {
+      "app_id": 15368,
+      "context": "verify-candidate-as-data"
     }
   ],
   "forbidden_repository_secrets": [
@@ -84,8 +88,8 @@
   ],
   "supabase": {
     "project_ref": "vbnlkqvauqwnjbxngkas",
-    "migration_id": "20260716100000",
-    "migration_history_sha256": "df1a5ed4bea121d74a7c17607015d00d248c5401eedad980f1c53b3680adcb40",
+    "migration_id": "20260719120000",
+    "migration_history_sha256": "324cff822a5a4d8e4a2554fa875471dec2345676fe8768c8ffe7cff283ffe3fb",
     "tables": [
       "erp_action_catalog",
       "erp_action_observations",
@@ -124,6 +128,10 @@
         "definition_sha256": "2e33fb28da4138e72c26f48b63594dedf4e9929a841fbca27d95909617987206"
       },
       {
+        "signature": "public.mercury_capability_states_are_safe(jsonb)",
+        "definition_sha256": "e8851d39d439d1ab433492ec0690521d1b0a327741a0d1d259bfd9eeec538427"
+      },
+      {
         "signature": "public.reject_validation_evidence_mutation()",
         "definition_sha256": "78116567472e5c8be398e54a44e53658952f8984333efc7ed1301b93347c9e71"
       },
@@ -148,21 +156,21 @@
         "definition_sha256": "534521773977fe6dcea308ec02c4f3ce42ca2c2b4f3c6536325400eeae38d252"
       }
     ],
-    "schema_sha256": "64ce613ff5434adab086994e4ad43985f902a0ddd87c1edfe31c4079a79d1509"
+    "schema_sha256": "2790a55ffa796eb1396fae6672d1a81120fa758080e29899811da1f1f53a39d6"
   },
   "release": {
-    "tag": "v0.2.2",
-    "version": "0.2.2"
+    "tag": "v0.3.0",
+    "version": "0.3.0"
   },
   "staging": {
     "repository": "natthaphonchop2-creator/mercury-tools-staging",
-    "tag_prefix": "v0.2.2-rc."
+    "tag_prefix": "v0.3.0-rc."
   },
   "provider_expectations": {
     "flowaccount_environment": "sandbox",
-    "hosted_tool_count": 20,
+    "hosted_tool_count": 24,
     "catalog_action_count": 254,
     "supabase_table_count": 17,
-    "supabase_function_count": 10
+    "supabase_function_count": 11
   }
 }
