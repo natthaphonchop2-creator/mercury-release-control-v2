@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from unittest.mock import create_autospec
@@ -127,6 +128,94 @@ def test_scanner_version_probe_accepts_trufflehog_version_on_stderr(
         gitleaks,
         trufflehog,
     )
+
+
+def test_trusted_gitleaks_config_is_materialized_from_reviewed_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = b'[extend]\nuseDefault = true\n'
+    commands: list[tuple[str, ...]] = []
+
+    def capture(
+        command: tuple[str, ...],
+        *,
+        cwd: Path | None,
+        environment: dict[str, str],
+        stderr_to_stdout: bool = False,
+    ) -> bytes:
+        del cwd, environment, stderr_to_stdout
+        commands.append(command)
+        return content
+
+    monkeypatch.setattr(inspector, "_run_capture", capture)
+    monkeypatch.setattr(
+        inspector,
+        "_TRUSTED_GITLEAKS_CONFIG_SHA256",
+        hashlib.sha256(content).hexdigest(),
+    )
+
+    path = inspector._materialize_trusted_gitleaks_config(
+        tmp_path,
+        clone=tmp_path,
+        reviewed_sha="a" * 40,
+        environment={"INSPECTOR_GIT": "/usr/bin/git"},
+    )
+
+    assert commands == [("/usr/bin/git", "show", f'{"a" * 40}:.gitleaks.toml')]
+    assert path.read_bytes() == content
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_trusted_gitleaks_config_rejects_unpinned_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        inspector,
+        "_run_capture",
+        lambda *_args, **_kwargs: b"unreviewed config\n",
+    )
+
+    with pytest.raises(InspectionError, match="^gitleaks_config_invalid$"):
+        inspector._materialize_trusted_gitleaks_config(
+            tmp_path,
+            clone=tmp_path,
+            reviewed_sha="a" * 40,
+            environment={"INSPECTOR_GIT": "/usr/bin/git"},
+        )
+
+
+def test_git_scan_passes_trusted_config_only_to_gitleaks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    binaries = {}
+    for name in ("git", "gitleaks", "trufflehog"):
+        binary = tmp_path / name
+        binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        binary.chmod(0o700)
+        binaries[name] = binary
+    config = tmp_path / "gitleaks.toml"
+    config.write_text('[extend]\nuseDefault = true\n', encoding="utf-8")
+    commands: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        inspector,
+        "_run_silent",
+        lambda command, **_kwargs: commands.append(tuple(command)),
+    )
+
+    inspector._scan_git(
+        tmp_path,
+        log_options="--all",
+        gitleaks=binaries["gitleaks"],
+        trufflehog=binaries["trufflehog"],
+        gitleaks_config=config,
+        environment={"INSPECTOR_GIT": str(binaries["git"])},
+    )
+
+    assert f"--config={config}" in commands[0]
+    assert not any(item.startswith("--config=") for item in commands[1])
 
 
 @pytest.mark.parametrize("log_type", ("build", "runtime"))
