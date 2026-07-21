@@ -251,6 +251,30 @@ _VALIDATION_CATALOG_FILES = {
     "flowaccount": ("catalog/global/flowaccount/actions.json", 190),
     "peak": ("catalog/global/peak/actions.json", 64),
 }
+_EXPECTED_LOCAL_MCP_TOOLS = frozenset(
+    {
+        "connector_status",
+        "credential_status",
+        "execute_erp_create",
+        "execute_erp_update",
+        "execute_sensitive_erp_action",
+        "get_document",
+        "get_erp_action_schema",
+        "get_erp_request_status",
+        "import_erp_spec",
+        "list_connector_drivers",
+        "list_workspace_flows",
+        "prepare_erp_mutation",
+        "retrieve_context_pack",
+        "run_accounting_skill",
+        "run_erp_read",
+        "run_mercury_flow",
+        "run_workspace_flow",
+        "save_workspace_flow",
+        "search_erp_actions",
+        "search_knowledge",
+    }
+)
 
 
 class InspectionError(RuntimeError):
@@ -1529,12 +1553,31 @@ def _static_mcp_tool_names(source: bytes) -> tuple[str, ...]:
     return tuple(names)
 
 
-def _count_static_mcp_tools(source: bytes) -> int:
-    return len(_static_mcp_tool_names(source))
+def _validate_remote_mcp_server(
+    server: Mapping[str, object],
+    *,
+    public_mcp_base_url: str,
+) -> None:
+    code = "staging_mcp_inventory_invalid"
+    public_origin = _strict_https_base(public_mcp_base_url, code)
+    note = server.get("note")
+    if (
+        set(server) != {"type", "url", "note"}
+        or server.get("type") != "http"
+        or server.get("url") != f"{public_origin}/mcp"
+        or not isinstance(note, str)
+        or not note
+        or note != note.strip()
+        or "\0" in note
+        or len(note.encode("utf-8")) > 512
+    ):
+        raise InspectionError(code)
 
 
 def _validate_staging_static(
     snapshot: ArchiveSnapshot,
+    *,
+    public_mcp_base_url: str,
 ) -> tuple[int, tuple[tuple[str, str, str], ...]]:
     if set(snapshot.static_files) != _STATIC_FILES:
         raise InspectionError("staging_static_source_invalid")
@@ -1558,11 +1601,13 @@ def _validate_staging_static(
     if set(servers) != {"mercury-finance"}:
         raise InspectionError("staging_mcp_inventory_invalid")
     server = _require_mapping(servers["mercury-finance"], "staging_mcp_inventory_invalid")
-    if server.get("command") != "uvx" or not isinstance(server.get("args"), list):
-        raise InspectionError("staging_mcp_inventory_invalid")
-    tools = _count_static_mcp_tools(snapshot.static_files["src/mercury_tools/mcp/local_server.py"])
-    if tools != 19:
+    _validate_remote_mcp_server(server, public_mcp_base_url=public_mcp_base_url)
+    tool_names = frozenset(
+        _static_mcp_tool_names(snapshot.static_files["src/mercury_tools/mcp/local_server.py"])
+    )
+    if tool_names != _EXPECTED_LOCAL_MCP_TOOLS:
         raise InspectionError("staging_local_tool_count_invalid")
+    tools = len(tool_names)
     return tools, _static_validation_identities(snapshot)
 
 
@@ -1747,7 +1792,10 @@ def _inspect_staging(
     if candidate_public_tree.digest != staging_public_tree.digest:
         raise InspectionError("staging_tree_digest_mismatch")
     staging_snapshot = _archive_snapshot(staging_archive)
-    local_tools, validation_identities = _validate_staging_static(staging_snapshot)
+    local_tools, validation_identities = _validate_staging_static(
+        staging_snapshot,
+        public_mcp_base_url=environment["MERCURY_PUBLIC_MCP_URL"],
+    )
     return (
         {
             "repository": repository,
