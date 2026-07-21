@@ -345,7 +345,7 @@ def test_guardian_rejects_production_migration_identity_hash_drift() -> None:
     files[".github/workflows/migrate-v0.3.0.yml"] = files[
         ".github/workflows/migrate-v0.3.0.yml"
     ].replace(
-        b"2ca702823fd17a7806ead1b829af21984ea54b676700cf443cb69b7e6161c0ca",
+        b"7e6378206076be0d314c2ffb6636e5ea728150ad29491450e3e397c5b6271300",
         b"0ca702823fd17a7806ead1b829af21984ea54b676700cf443cb69b7e6161c0ca",
     )
     files["control-manifest.json"] = json.dumps(
