@@ -6,6 +6,7 @@ import io
 import json
 import subprocess
 import tarfile
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -246,6 +247,62 @@ class FakeHttpResponse:
 
     def read(self, _limit: int) -> bytes:
         return self._body
+
+
+def test_github_rest_api_treats_exact_empty_repository_conflict_as_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tag = f"v0.3.0-rc.{REVIEWED_SHA[:12]}"
+    payload = {
+        "message": "Git Repository is empty.",
+        "documentation_url": "https://docs.github.com/rest/git/refs#get-a-reference",
+        "status": "409",
+    }
+
+    def fake_urlopen(request: urllib.request.Request, timeout: int):
+        raise urllib.error.HTTPError(
+            request.full_url,
+            409,
+            "Conflict",
+            {},
+            io.BytesIO(json.dumps(payload).encode()),
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    assert (
+        GitHubRestApi(token=SecretStr("github-secret")).read_staging(
+            "example/mercury-tools-staging", tag
+        )
+        is None
+    )
+
+
+def test_github_rest_api_rejects_other_conflict_responses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tag = f"v0.3.0-rc.{REVIEWED_SHA[:12]}"
+    payload = {
+        "message": "Repository rule conflict.",
+        "documentation_url": "https://docs.github.com/rest/git/refs#get-a-reference",
+        "status": "409",
+    }
+
+    def fake_urlopen(request: urllib.request.Request, timeout: int):
+        raise urllib.error.HTTPError(
+            request.full_url,
+            409,
+            "Conflict",
+            {},
+            io.BytesIO(json.dumps(payload).encode()),
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(StagingError, match="^staging_github_api_failed$"):
+        GitHubRestApi(token=SecretStr("github-secret")).read_staging(
+            "example/mercury-tools-staging", tag
+        )
 
 
 def _blob_sha(content: bytes) -> str:
