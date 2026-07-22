@@ -21,6 +21,391 @@ from mercury_release_control.surface_inspector import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class _HttpStream:
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+        self._offset = 0
+        self.headers: dict[str, str] = {}
+
+    def __enter__(self) -> _HttpStream:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def getcode(self) -> int:
+        return 200
+
+    def read(self, amount: int) -> bytes:
+        start = self._offset
+        self._offset = min(len(self._body), start + amount)
+        return self._body[start : self._offset]
+
+
+def test_hosted_payload_budget_reserves_capacity_beyond_general_inventory() -> None:
+    budget = inspector.InspectionBudget(started=inspector.time.monotonic())
+
+    for _ in range(inspector.MAX_HTTP_OBJECTS + 3):
+        budget.charge_object()
+
+    assert budget.objects == inspector.MAX_HTTP_OBJECTS + 3
+    for _ in range(inspector.MAX_HOSTED_SCAN_OBJECTS - budget.objects):
+        budget.charge_object()
+    with pytest.raises(InspectionError, match="^hosted_payload_budget_exhausted$"):
+        budget.charge_object()
+
+
+def test_github_records_supports_a_larger_bounded_actions_inventory(monkeypatch) -> None:
+    records = [{"id": index + 1} for index in range(inspector.MAX_HTTP_OBJECTS + 1)]
+    response = inspector.HttpResponse(status=200, headers={}, body=b"[]")
+    observed_budgets: list[inspector.InspectionBudget | None] = []
+
+    def github_json_probe(
+        *_args: object,
+        budget: inspector.InspectionBudget | None = None,
+        **_kwargs: object,
+    ) -> tuple[object, inspector.HttpResponse]:
+        observed_budgets.append(budget)
+        return records, response
+
+    monkeypatch.setattr(inspector, "_github_json", github_json_probe)
+    budget = inspector.InspectionBudget(started=inspector.time.monotonic())
+
+    with pytest.raises(InspectionError, match="^github_inventory_too_large$"):
+        inspector._github_records("/repos/example/actions/runs", "token")
+
+    observed, _hashes = inspector._github_records(
+        "/repos/example/actions/runs",
+        "token",
+        maximum=inspector.MAX_HOSTED_SCAN_OBJECTS,
+        budget=budget,
+    )
+
+    assert observed == records
+    assert observed_budgets[-1] is budget
+
+
+def test_github_records_rejects_more_than_the_hosted_inventory_bound(monkeypatch) -> None:
+    records = [{"id": index + 1} for index in range(inspector.MAX_HOSTED_SCAN_OBJECTS + 1)]
+    response = inspector.HttpResponse(status=200, headers={}, body=b"[]")
+    monkeypatch.setattr(
+        inspector,
+        "_github_json",
+        lambda *_args, **_kwargs: (records, response),
+    )
+
+    with pytest.raises(InspectionError, match="^github_inventory_too_large$"):
+        inspector._github_records(
+            "/repos/example/actions/runs",
+            "token",
+            maximum=inspector.MAX_HOSTED_SCAN_OBJECTS,
+        )
+
+
+def test_github_records_reuses_shared_budget_across_pages(monkeypatch) -> None:
+    budget = inspector.InspectionBudget(started=inspector.time.monotonic())
+    next_url = "https://api.github.com/repos/example/actions/runs?page=2"
+    responses = iter(
+        (
+            (
+                [{"id": 1}],
+                inspector.HttpResponse(
+                    status=200,
+                    headers={"link": f'<{next_url}>; rel="next"'},
+                    body=b"page-1",
+                ),
+            ),
+            ([{"id": 2}], inspector.HttpResponse(status=200, headers={}, body=b"page-2")),
+        )
+    )
+    observed: list[tuple[str, inspector.InspectionBudget | None]] = []
+
+    def github_json_probe(
+        path: str,
+        _token: str,
+        *,
+        budget: inspector.InspectionBudget | None = None,
+        **_kwargs: object,
+    ) -> tuple[object, inspector.HttpResponse]:
+        observed.append((path, budget))
+        return next(responses)
+
+    monkeypatch.setattr(inspector, "_github_json", github_json_probe)
+
+    records, hashes = inspector._github_records(
+        "/repos/example/actions/runs?per_page=100",
+        "token",
+        maximum=inspector.MAX_HOSTED_SCAN_OBJECTS,
+        budget=budget,
+    )
+
+    assert records == [{"id": 1}, {"id": 2}]
+    assert hashes == [
+        inspector._sha256_bytes(b"page-1"),
+        inspector._sha256_bytes(b"page-2"),
+    ]
+    assert observed == [
+        ("/repos/example/actions/runs?per_page=100", budget),
+        ("/repos/example/actions/runs?page=2", budget),
+    ]
+
+
+def test_github_json_passes_shared_budget_to_network(monkeypatch) -> None:
+    budget = inspector.InspectionBudget(started=inspector.time.monotonic())
+    observed: list[inspector.InspectionBudget | None] = []
+
+    def request_probe(
+        _url: str,
+        *,
+        budget: inspector.InspectionBudget | None = None,
+        **_kwargs: object,
+    ) -> inspector.HttpResponse:
+        observed.append(budget)
+        return inspector.HttpResponse(status=200, headers={}, body=b"{}")
+
+    monkeypatch.setattr(inspector, "request_bytes", request_probe)
+
+    payload, _response = inspector._github_json(
+        "/repos/example/repository", "token", budget=budget
+    )
+
+    assert payload == {}
+    assert observed == [budget]
+
+
+def test_github_inventory_and_payload_share_request_budget(monkeypatch) -> None:
+    responses = iter((_HttpStream(b"[]"),))
+    monkeypatch.setattr(inspector, "MAX_HTTP_REQUESTS", 1)
+    monkeypatch.setattr(inspector, "_open_url", lambda *_args, **_kwargs: next(responses))
+    budget = inspector.InspectionBudget(started=inspector.time.monotonic())
+
+    records, _hashes = inspector._github_records(
+        "/repos/example/actions/runs", "token", budget=budget
+    )
+
+    assert records == []
+    assert budget.requests == 1
+    with pytest.raises(InspectionError, match="^network_request_budget_exhausted$"):
+        inspector.request_bytes(
+            "https://api.github.com/repos/example/actions/runs/1/logs",
+            budget=budget,
+        )
+
+
+def test_github_inventory_and_payload_share_byte_budget(monkeypatch) -> None:
+    inventory = b"[]"
+    payload = b"payload"
+    responses = iter((_HttpStream(inventory), _HttpStream(payload)))
+    monkeypatch.setattr(inspector, "MAX_TOTAL_HTTP_BYTES", len(inventory) + len(payload) - 1)
+    monkeypatch.setattr(inspector, "_open_url", lambda *_args, **_kwargs: next(responses))
+    budget = inspector.InspectionBudget(started=inspector.time.monotonic())
+
+    records, _hashes = inspector._github_records(
+        "/repos/example/actions/runs", "token", budget=budget
+    )
+
+    assert records == []
+    with pytest.raises(InspectionError, match="^network_byte_budget_exhausted$"):
+        inspector.request_bytes(
+            "https://api.github.com/repos/example/actions/runs/1/logs",
+            budget=budget,
+        )
+
+
+def test_github_actions_shares_budget_and_scans_each_download_immediately(monkeypatch) -> None:
+    budget = inspector.InspectionBudget(started=inspector.time.monotonic())
+    runs = [{"id": 11}, {"id": 12}]
+    artifacts = [{"id": 21}]
+    observed_download_budgets: list[inspector.InspectionBudget | None] = []
+    scanned_payloads: list[bytes] = []
+    events: list[tuple[str, bytes]] = []
+
+    def records_probe(
+        path: str,
+        _token: str,
+        *,
+        key: str | None = None,
+        maximum: int = inspector.MAX_HTTP_OBJECTS,
+        budget: inspector.InspectionBudget | None = None,
+    ) -> tuple[list[dict[str, int]], list[str]]:
+        del key, maximum
+        assert budget is not None
+        if "/runs" in path:
+            return runs, ["run-inventory"]
+        if "/artifacts" in path:
+            return artifacts, ["artifact-inventory"]
+        return [], ["cache-inventory"]
+
+    def request_probe(
+        url: str,
+        *,
+        budget: inspector.InspectionBudget | None = None,
+        **_kwargs: object,
+    ) -> inspector.HttpResponse:
+        observed_download_budgets.append(budget)
+        body = url.encode("ascii")
+        events.append(("download", body))
+        return inspector.HttpResponse(status=200, headers={}, body=body)
+
+    def scan_probe(
+        payloads: object,
+        *,
+        budget: inspector.InspectionBudget | None = None,
+        **_kwargs: object,
+    ) -> list[str]:
+        assert budget is not None
+        hashes: list[str] = []
+        for payload in payloads:  # type: ignore[union-attr]
+            events.append(("scan", payload))
+            scanned_payloads.append(payload)
+            budget.charge_object()
+            hashes.append(inspector._sha256_bytes(payload))
+        return hashes
+
+    monkeypatch.setattr(inspector, "_github_records", records_probe)
+    monkeypatch.setattr(inspector, "request_bytes", request_probe)
+    monkeypatch.setattr(inspector, "_scan_payloads", scan_probe)
+
+    hashes = inspector._inspect_github_actions(
+        token="token",
+        repository="example/repository",
+        gitleaks=Path("gitleaks"),
+        trufflehog=Path("trufflehog"),
+        allowlist=frozenset(),
+        budget=budget,
+    )
+
+    assert hashes[:3] == ["run-inventory", "artifact-inventory", "cache-inventory"]
+    assert observed_download_budgets == [budget, budget, budget]
+    assert len(scanned_payloads) == 3
+    assert [kind for kind, _payload in events] == [
+        "download",
+        "scan",
+        "download",
+        "scan",
+        "download",
+        "scan",
+    ]
+    assert budget.objects == 3
+
+
+def test_github_actions_rejects_aggregate_payloads_before_download(monkeypatch) -> None:
+    runs = [{"id": index + 1} for index in range(inspector.MAX_HOSTED_SCAN_OBJECTS)]
+    artifacts = [{"id": inspector.MAX_HOSTED_SCAN_OBJECTS + 1}]
+    downloaded: list[str] = []
+
+    def records_probe(
+        path: str, *_args: object, **_kwargs: object
+    ) -> tuple[list[dict[str, int]], list[str]]:
+        if "/runs" in path:
+            return runs, []
+        if "/artifacts" in path:
+            return artifacts, []
+        return [], []
+
+    monkeypatch.setattr(inspector, "_github_records", records_probe)
+    monkeypatch.setattr(
+        inspector,
+        "request_bytes",
+        lambda url, **_kwargs: downloaded.append(url),
+    )
+
+    with pytest.raises(InspectionError, match="^hosted_payload_budget_exhausted$"):
+        inspector._inspect_github_actions(
+            token="token",
+            repository="example/repository",
+            gitleaks=Path("gitleaks"),
+            trufflehog=Path("trufflehog"),
+            allowlist=frozenset(),
+            budget=inspector.InspectionBudget(started=inspector.time.monotonic()),
+        )
+
+    assert downloaded == []
+
+
+def test_github_release_assets_share_budget_and_scan_lazily(monkeypatch) -> None:
+    budget = inspector.InspectionBudget(started=inspector.time.monotonic())
+    releases = [{"id": 1, "assets": [{"id": 31}, {"id": 32}]}]
+    events: list[tuple[str, bytes]] = []
+    observed_download_budgets: list[inspector.InspectionBudget | None] = []
+
+    def records_probe(
+        *_args: object, **_kwargs: object
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        assert _kwargs.get("budget") is budget
+        return releases, ["release-inventory"]
+
+    def request_probe(
+        url: str,
+        *,
+        budget: inspector.InspectionBudget | None = None,
+        **_kwargs: object,
+    ) -> inspector.HttpResponse:
+        body = url.encode("ascii")
+        observed_download_budgets.append(budget)
+        events.append(("download", body))
+        return inspector.HttpResponse(status=200, headers={}, body=body)
+
+    def scan_probe(
+        payloads: object,
+        *,
+        budget: inspector.InspectionBudget | None = None,
+        **_kwargs: object,
+    ) -> list[str]:
+        assert budget is not None
+        hashes: list[str] = []
+        for payload in payloads:  # type: ignore[union-attr]
+            events.append(("scan", payload))
+            budget.charge_object()
+            hashes.append(inspector._sha256_bytes(payload))
+        return hashes
+
+    monkeypatch.setattr(inspector, "_github_records", records_probe)
+    monkeypatch.setattr(inspector, "request_bytes", request_probe)
+    monkeypatch.setattr(inspector, "_scan_payloads", scan_probe)
+
+    hashes = inspector._inspect_github_releases(
+        token="token",
+        repository="example/repository",
+        gitleaks=Path("gitleaks"),
+        trufflehog=Path("trufflehog"),
+        allowlist=frozenset(),
+        budget=budget,
+    )
+
+    assert hashes[0] == "release-inventory"
+    assert observed_download_budgets == [budget, budget]
+    assert [kind for kind, _payload in events] == ["download", "scan", "download", "scan"]
+    assert budget.objects == 2
+
+
+def test_github_release_assets_reject_aggregate_before_download(monkeypatch) -> None:
+    assets = [{"id": index + 1} for index in range(inspector.MAX_HOSTED_SCAN_OBJECTS + 1)]
+    downloaded: list[str] = []
+    monkeypatch.setattr(
+        inspector,
+        "_github_records",
+        lambda *_args, **_kwargs: ([{"id": 1, "assets": assets}], []),
+    )
+    monkeypatch.setattr(
+        inspector,
+        "request_bytes",
+        lambda url, **_kwargs: downloaded.append(url),
+    )
+
+    with pytest.raises(InspectionError, match="^hosted_payload_budget_exhausted$"):
+        inspector._inspect_github_releases(
+            token="token",
+            repository="example/repository",
+            gitleaks=Path("gitleaks"),
+            trufflehog=Path("trufflehog"),
+            allowlist=frozenset(),
+            budget=inspector.InspectionBudget(started=inspector.time.monotonic()),
+        )
+
+    assert downloaded == []
+
+
 def test_github_download_redirect_hosts_are_exact_and_include_actions_logs() -> None:
     assert frozenset(
         {
@@ -892,7 +1277,9 @@ def test_surface_inspector_routes_v022_profile_only_to_versioned_collectors(
     monkeypatch.setattr(inspector, "_inspect_marketplace", marketplace_probe)
     monkeypatch.setattr(inspector, "_inspect_render_and_public_mcp", render_probe)
     monkeypatch.setattr(inspector, "inspect_database", database_probe)
-    monkeypatch.setattr(inspector, "_flowaccount_live_read", lambda _environment: digest)
+    monkeypatch.setattr(
+        inspector, "_flowaccount_live_read", lambda _environment, **_kwargs: digest
+    )
 
     evidence = inspector.inspect(
         policy_path=policy_path,

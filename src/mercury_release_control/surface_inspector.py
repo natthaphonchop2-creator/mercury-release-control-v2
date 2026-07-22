@@ -51,6 +51,7 @@ MAX_UNTRUSTED_JSON_BYTES = 2 * 1024 * 1024
 MAX_HTTP_BYTES = 32 * 1024 * 1024
 MAX_TOTAL_HTTP_BYTES = 256 * 1024 * 1024
 MAX_HTTP_OBJECTS = 200
+MAX_HOSTED_SCAN_OBJECTS = 512
 MAX_HTTP_REQUESTS = 1_000
 MAX_PAGES = 20
 MAX_PROCESS_OUTPUT_BYTES = 64 * 1024
@@ -351,9 +352,12 @@ class InspectionBudget:
             raise InspectionError("archive_byte_budget_exhausted")
 
     def charge_object(self) -> None:
-        self.check_time()
+        self.check_object_capacity(1)
         self.objects += 1
-        if self.objects > MAX_HTTP_OBJECTS:
+
+    def check_object_capacity(self, amount: int) -> None:
+        self.check_time()
+        if amount < 0 or self.objects + amount > MAX_HOSTED_SCAN_OBJECTS:
             raise InspectionError("hosted_payload_budget_exhausted")
 
 
@@ -926,7 +930,11 @@ def _github_headers(token: str, *, accept: str = "application/vnd.github+json") 
 
 
 def _github_json(
-    path: str, token: str, *, accept: str = "application/vnd.github+json"
+    path: str,
+    token: str,
+    *,
+    accept: str = "application/vnd.github+json",
+    budget: InspectionBudget | None = None,
 ) -> tuple[object, HttpResponse]:
     if not path.startswith("/") or "\0" in path:
         raise InspectionError("github_path_invalid")
@@ -934,27 +942,35 @@ def _github_json(
         f"https://api.github.com{path}",
         headers=_github_headers(token, accept=accept),
         code="github_request_failed",
+        budget=budget,
     )
     return _parse_json_bytes(response.body, "github_response_invalid"), response
 
 
 def _github_records(
-    path: str, token: str, *, key: str | None = None
+    path: str,
+    token: str,
+    *,
+    key: str | None = None,
+    maximum: int = MAX_HTTP_OBJECTS,
+    budget: InspectionBudget | None = None,
 ) -> tuple[list[Mapping[str, object]], list[str]]:
     """Fetch bounded GitHub pagination and return only data hashes as evidence."""
 
+    if maximum < 1 or maximum > MAX_HOSTED_SCAN_OBJECTS:
+        raise InspectionError("github_inventory_limit_invalid")
     current = path
     records: list[Mapping[str, object]] = []
     hashes: list[str] = []
     for _ in range(MAX_PAGES):
-        payload, response = _github_json(current, token)
+        payload, response = _github_json(current, token, budget=budget)
         values: object = payload
         if key is not None:
             container = _require_mapping(payload, "github_response_invalid")
             values = container.get(key)
         if not isinstance(values, list):
             raise InspectionError("github_response_invalid")
-        if len(records) + len(values) > MAX_HTTP_OBJECTS:
+        if len(records) + len(values) > maximum:
             raise InspectionError("github_inventory_too_large")
         for value in values:
             records.append(_require_mapping(value, "github_response_invalid"))
@@ -2383,23 +2399,36 @@ def _inspect_github_releases(
     allowlist: frozenset[tuple[str, str, str]],
     budget: InspectionBudget,
 ) -> list[str]:
-    releases, hashes = _github_records(f"/repos/{repository}/releases?per_page=100", token)
-    payloads: list[bytes] = []
+    releases, hashes = _github_records(
+        f"/repos/{repository}/releases?per_page=100", token, budget=budget
+    )
+    asset_ids: list[int] = []
     for release in releases:
         assets = release.get("assets")
         if not isinstance(assets, list):
             raise InspectionError("github_release_inventory_invalid")
         for asset in assets:
             item = _require_mapping(asset, "github_release_inventory_invalid")
-            asset_id = _record_id(item, "github_release_inventory_invalid")
+            asset_ids.append(_record_id(item, "github_release_inventory_invalid"))
+
+    budget.check_object_capacity(len(asset_ids))
+
+    def payloads() -> Iterable[bytes]:
+        for asset_id in asset_ids:
             response = request_bytes(
                 f"https://api.github.com/repos/{repository}/releases/assets/{asset_id}",
                 headers=_github_headers(token, accept="application/octet-stream"),
                 code="github_asset_download_failed",
+                budget=budget,
             )
-            payloads.append(response.body)
+            yield response.body
+
     return hashes + _scan_payloads(
-        payloads, gitleaks=gitleaks, trufflehog=trufflehog, allowlist=allowlist, budget=budget
+        payloads(),
+        gitleaks=gitleaks,
+        trufflehog=trufflehog,
+        allowlist=allowlist,
+        budget=budget,
     )
 
 
@@ -2413,39 +2442,61 @@ def _inspect_github_actions(
     budget: InspectionBudget,
 ) -> list[str]:
     runs, run_hashes = _github_records(
-        f"/repos/{repository}/actions/runs?per_page=100", token, key="workflow_runs"
+        f"/repos/{repository}/actions/runs?per_page=100",
+        token,
+        key="workflow_runs",
+        maximum=MAX_HOSTED_SCAN_OBJECTS,
+        budget=budget,
     )
     artifacts, artifact_hashes = _github_records(
-        f"/repos/{repository}/actions/artifacts?per_page=100", token, key="artifacts"
+        f"/repos/{repository}/actions/artifacts?per_page=100",
+        token,
+        key="artifacts",
+        maximum=MAX_HOSTED_SCAN_OBJECTS,
+        budget=budget,
     )
     caches, cache_hashes = _github_records(
-        f"/repos/{repository}/actions/caches?per_page=100", token, key="actions_caches"
+        f"/repos/{repository}/actions/caches?per_page=100",
+        token,
+        key="actions_caches",
+        budget=budget,
     )
     if caches:
         raise InspectionError("github_cache_content_unavailable")
-    payloads: list[bytes] = []
-    for run in runs:
-        run_id = _record_id(run, "github_actions_inventory_invalid")
-        response = request_bytes(
-            f"https://api.github.com/repos/{repository}/actions/runs/{run_id}/logs",
-            headers=_github_headers(token, accept="application/vnd.github+json"),
-            code="github_actions_log_download_failed",
-        )
-        payloads.append(response.body)
-    for artifact in artifacts:
-        artifact_id = _record_id(artifact, "github_actions_inventory_invalid")
-        response = request_bytes(
-            f"https://api.github.com/repos/{repository}/actions/artifacts/{artifact_id}/zip",
-            headers=_github_headers(token, accept="application/vnd.github+json"),
-            code="github_actions_artifact_download_failed",
-        )
-        payloads.append(response.body)
+    run_ids = tuple(_record_id(run, "github_actions_inventory_invalid") for run in runs)
+    artifact_ids = tuple(
+        _record_id(artifact, "github_actions_inventory_invalid") for artifact in artifacts
+    )
+    budget.check_object_capacity(len(run_ids) + len(artifact_ids))
+
+    def payloads() -> Iterable[bytes]:
+        for run_id in run_ids:
+            response = request_bytes(
+                f"https://api.github.com/repos/{repository}/actions/runs/{run_id}/logs",
+                headers=_github_headers(token, accept="application/vnd.github+json"),
+                code="github_actions_log_download_failed",
+                budget=budget,
+            )
+            yield response.body
+        for artifact_id in artifact_ids:
+            response = request_bytes(
+                f"https://api.github.com/repos/{repository}/actions/artifacts/{artifact_id}/zip",
+                headers=_github_headers(token, accept="application/vnd.github+json"),
+                code="github_actions_artifact_download_failed",
+                budget=budget,
+            )
+            yield response.body
+
     return (
         run_hashes
         + artifact_hashes
         + cache_hashes
         + _scan_payloads(
-            payloads, gitleaks=gitleaks, trufflehog=trufflehog, allowlist=allowlist, budget=budget
+            payloads(),
+            gitleaks=gitleaks,
+            trufflehog=trufflehog,
+            allowlist=allowlist,
+            budget=budget,
         )
     )
 
@@ -2463,19 +2514,21 @@ def _inspect_github_packages_pages_wiki(
     hashes: list[str] = []
     for package_type in ("npm", "container", "maven", "nuget"):
         packages, package_hashes = _github_records(
-            f"/users/{owner}/packages?package_type={package_type}&per_page=100", token
+            f"/users/{owner}/packages?package_type={package_type}&per_page=100",
+            token,
+            budget=budget,
         )
         hashes.extend(package_hashes)
         if packages:
             raise InspectionError("github_package_content_unavailable")
-    payload, response = _github_json(f"/repos/{repository}", token)
+    payload, response = _github_json(f"/repos/{repository}", token, budget=budget)
     metadata = _require_mapping(payload, "github_repository_metadata_invalid")
     hashes.append(_sha256_bytes(response.body))
     if metadata.get("has_pages") is not False:
         raise InspectionError("github_pages_content_unavailable")
     if metadata.get("has_wiki") is not False:
         raise InspectionError("github_wiki_content_unavailable")
-    del gitleaks, trufflehog, allowlist, budget
+    del gitleaks, trufflehog, allowlist
     return hashes
 
 
@@ -2488,7 +2541,9 @@ def _inspect_marketplace(
     budget: InspectionBudget,
 ) -> list[str]:
     response = request_bytes(
-        environment["MERCURY_MARKETPLACE_SNAPSHOT_URL"], code="marketplace_download_failed"
+        environment["MERCURY_MARKETPLACE_SNAPSHOT_URL"],
+        code="marketplace_download_failed",
+        budget=budget,
     )
     return _scan_payloads(
         (response.body,), gitleaks=gitleaks, trufflehog=trufflehog, allowlist=allowlist, budget=budget
@@ -2526,6 +2581,7 @@ def _mcp_call(
     request_id: int,
     token: str,
     session_id: str | None = None,
+    budget: InspectionBudget | None = None,
 ) -> tuple[Mapping[str, object], HttpResponse]:
     request = json.dumps(
         {"jsonrpc": "2.0", "id": request_id, "method": method, "params": dict(params)},
@@ -2545,11 +2601,18 @@ def _mcp_call(
         headers=headers,
         body=request,
         code="public_mcp_request_failed",
+        budget=budget,
     )
     return _mcp_response_json(response, request_id=request_id), response
 
 
-def _mcp_notify(endpoint: str, *, token: str, session_id: str) -> HttpResponse:
+def _mcp_notify(
+    endpoint: str,
+    *,
+    token: str,
+    session_id: str,
+    budget: InspectionBudget | None = None,
+) -> HttpResponse:
     payload = json.dumps(
         {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
         ensure_ascii=True,
@@ -2566,6 +2629,7 @@ def _mcp_notify(endpoint: str, *, token: str, session_id: str) -> HttpResponse:
         },
         body=payload,
         code="public_mcp_request_failed",
+        budget=budget,
         expected_statuses=frozenset({200, 202, 204}),
     )
     if response.headers.get("mcp-session-id", session_id) != session_id:
@@ -2793,6 +2857,7 @@ def _inspect_render_and_public_mcp(
         },
         request_id=1,
         token=environment["MERCURY_PUBLIC_MCP_TOKEN"],
+        budget=budget,
     )
     server_info = _require_mapping(initialized.get("serverInfo"), "public_mcp_initialize_invalid")
     if (
@@ -2804,7 +2869,10 @@ def _inspect_render_and_public_mcp(
     if not isinstance(session_id, str) or not session_id or len(session_id) > 1024:
         raise InspectionError("public_mcp_session_invalid")
     initialized_notification = _mcp_notify(
-        endpoint, token=environment["MERCURY_PUBLIC_MCP_TOKEN"], session_id=session_id
+        endpoint,
+        token=environment["MERCURY_PUBLIC_MCP_TOKEN"],
+        session_id=session_id,
+        budget=budget,
     )
     tool_rows: list[object] = []
     tools_responses: list[HttpResponse] = []
@@ -2817,6 +2885,7 @@ def _inspect_render_and_public_mcp(
             request_id=page + 2,
             token=environment["MERCURY_PUBLIC_MCP_TOKEN"],
             session_id=session_id,
+            budget=budget,
         )
         if tools_response.headers.get("mcp-session-id", session_id) != session_id:
             raise InspectionError("public_mcp_session_invalid")
@@ -2903,6 +2972,7 @@ def _inspect_render_and_public_mcp(
             request_id=request_id,
             token=environment["MERCURY_PUBLIC_MCP_TOKEN"],
             session_id=session_id,
+            budget=budget,
         )
         _require_connector_validation_payload(
             result,
@@ -3184,7 +3254,9 @@ def inspect_database(
     return observed, flowaccount
 
 
-def _flowaccount_live_read(environment: Mapping[str, str]) -> str:
+def _flowaccount_live_read(
+    environment: Mapping[str, str], *, budget: InspectionBudget | None = None
+) -> str:
     base = environment["FLOWACCOUNT_SANDBOX_BASE_URL"].rstrip("/")
     token_body = urllib.parse.urlencode(
         {
@@ -3200,6 +3272,7 @@ def _flowaccount_live_read(environment: Mapping[str, str]) -> str:
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         body=token_body,
         code="flowaccount_token_request_failed",
+        budget=budget,
     )
     token_payload = _require_mapping(
         _parse_json_bytes(token_response.body, "flowaccount_token_invalid"),
@@ -3212,6 +3285,7 @@ def _flowaccount_live_read(environment: Mapping[str, str]) -> str:
         f"{base}/company/info",
         headers={"Authorization": f"Bearer {access_token}"},
         code="flowaccount_live_read_failed",
+        budget=budget,
     )
     payload = _require_mapping(
         _parse_json_bytes(read_response.body, "flowaccount_live_read_invalid"),
@@ -3406,7 +3480,7 @@ def inspect(
     flowaccount["report_sha256"] = _canonical_sha256(
         {
             "coverage": flowaccount["report_sha256"],
-            "live_read": _flowaccount_live_read(values),
+            "live_read": _flowaccount_live_read(values, budget=budget),
         }
     )
     completed_at = _timestamp(clock)
