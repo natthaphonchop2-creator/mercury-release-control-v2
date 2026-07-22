@@ -16,6 +16,23 @@ from mercury_release_control.provider_inspector import (
 from mercury_release_control.release_profile import release_profile
 
 REVIEWED_SHA = "a" * 40
+_CATALOG_TYPES = {
+    "date": "pg_catalog.date",
+    "integer": "pg_catalog.int4",
+    "jsonb": "pg_catalog.jsonb",
+    "text": "pg_catalog.text",
+    "timestamp with time zone": "pg_catalog.timestamptz",
+    "vector": "extensions.vector",
+}
+
+
+def _function_row(signature: str, definition: str) -> tuple[str, list[str], str]:
+    function_name, _, arguments = signature.removeprefix("public.").partition("(")
+    argument_types = arguments.removesuffix(")")
+    catalog_types = [] if not argument_types else [
+        _CATALOG_TYPES[argument_type] for argument_type in argument_types.split(",")
+    ]
+    return function_name, catalog_types, definition
 
 
 @pytest.fixture
@@ -166,7 +183,10 @@ def test_supabase_inspection_starts_read_only_and_requires_exact_inventory() -> 
             if "pg_catalog.pg_tables" in self.last:
                 return [(name,) for name in tables]
             if "pg_get_functiondef" in self.last:
-                return sorted(definitions.items())
+                return [
+                    _function_row(signature, definition)
+                    for signature, definition in sorted(definitions.items())
+                ]
             if "schema_migrations" in self.last:
                 return [("20260719120000",)]
             if "erp_action_validation_knowledge" in self.last:
@@ -203,7 +223,7 @@ def test_supabase_inspection_starts_read_only_and_requires_exact_inventory() -> 
     )
 
 
-def test_supabase_inspection_canonicalizes_visible_public_function_signatures() -> None:
+def test_supabase_inspection_canonicalizes_catalog_types_before_sorting() -> None:
     tables = [f"table_{index:02d}" for index in range(17)]
     profile = release_profile("0.3.0")
     definitions = {
@@ -225,8 +245,8 @@ def test_supabase_inspection_canonicalizes_visible_public_function_signatures() 
                 return [(name,) for name in tables]
             if "pg_get_functiondef" in self.last:
                 return [
-                    (name.removeprefix("public."), definition)
-                    for name, definition in sorted(definitions.items())
+                    _function_row(signature, definition)
+                    for signature, definition in reversed(sorted(definitions.items()))
                 ]
             if "schema_migrations" in self.last:
                 return [("20260719120000",)]
@@ -251,6 +271,51 @@ def test_supabase_inspection_canonicalizes_visible_public_function_signatures() 
     assert observed["function_count"] == 11
 
 
+def test_supabase_inspection_rejects_an_extra_public_function_overload() -> None:
+    tables = [f"table_{index:02d}" for index in range(17)]
+    profile = release_profile("0.3.0")
+    definitions = {
+        name: f"definition:{name}" for name in profile.supabase_function_signatures
+    }
+    functions = {
+        name: hashlib.sha256(definition.encode()).hexdigest()
+        for name, definition in definitions.items()
+    }
+
+    class Cursor:
+        last = ""
+
+        def execute(self, query: str, parameters: tuple[object, ...] = ()) -> None:
+            self.last = query
+
+        def fetchall(self):
+            if "pg_catalog.pg_tables" in self.last:
+                return [(name,) for name in tables]
+            if "pg_get_functiondef" in self.last:
+                rows = [
+                    _function_row(signature, definition)
+                    for signature, definition in sorted(definitions.items())
+                ]
+                rows.append(("validation_label_kind", ["pg_catalog.jsonb"], "extra overload"))
+                return rows
+            raise AssertionError(self.last)
+
+    class Connection:
+        pgconn = SimpleNamespace(ssl_in_use=True)
+
+        def cursor(self) -> Cursor:
+            return Cursor()
+
+    with pytest.raises(InspectionError, match="^supabase_function_inventory_invalid$"):
+        inspect_supabase_connection(
+            Connection(),
+            expected_tables=tables,
+            expected_functions=functions,
+            expected_migration_id="20260719120000",
+            version="0.3.0",
+        )
+
+
 def test_supabase_inspection_rejects_function_definition_hash_drift() -> None:
     tables = [f"table_{index:02d}" for index in range(17)]
     profile = release_profile("0.3.0")
@@ -266,7 +331,9 @@ def test_supabase_inspection_rejects_function_definition_hash_drift() -> None:
             if "pg_catalog.pg_tables" in self.last:
                 return [(name,) for name in tables]
             if "pg_get_functiondef" in self.last:
-                return [(name, f"drifted:{name}") for name in sorted(functions)]
+                return [
+                    _function_row(name, f"drifted:{name}") for name in sorted(functions)
+                ]
             raise AssertionError(self.last)
 
     class Connection:
