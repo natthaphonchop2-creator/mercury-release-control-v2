@@ -163,6 +163,19 @@ def test_surface_database_tls_identity_uses_psycopg3_pgconn(
         )
 
 
+def test_shared_pooler_login_resolves_to_postgres_database_role() -> None:
+    plan = inspector.parse_database_url(
+        "postgresql://postgres.vbnlkqvauqwnjbxngkas:secret@"
+        "aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres?sslmode=verify-full",
+        project_ref="vbnlkqvauqwnjbxngkas",
+    )
+
+    assert plan.kind == "pooler"
+    assert plan.user == "postgres.vbnlkqvauqwnjbxngkas"
+    assert plan.expected_database == "postgres"
+    assert plan.expected_role == "postgres"
+
+
 def _valid_environment() -> dict[str, str]:
     return {
         "FLOWACCOUNT_SANDBOX_BASE_URL": "https://openapi.flowaccount.com/test",
