@@ -244,9 +244,20 @@ def test_supabase_inspection_canonicalizes_catalog_types_before_sorting() -> Non
             if "pg_catalog.pg_tables" in self.last:
                 return [(name,) for name in tables]
             if "pg_get_functiondef" in self.last:
-                return [
+                rows = [
                     _function_row(signature, definition)
                     for signature, definition in reversed(sorted(definitions.items()))
+                ]
+                return [
+                    (
+                        function_name,
+                        [
+                            "public.vector" if type_name == "extensions.vector" else type_name
+                            for type_name in argument_types
+                        ],
+                        definition,
+                    )
+                    for function_name, argument_types, definition in rows
                 ]
             if "schema_migrations" in self.last:
                 return [("20260719120000",)]
