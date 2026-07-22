@@ -22,6 +22,15 @@ _SHA = re.compile(r"^[0-9a-f]{40}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _MIGRATION = re.compile(r"^[0-9]{14}$")
 _PROJECT = re.compile(r"^[a-z0-9]{20}$")
+_FUNCTION_IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
+_CATALOG_TYPE_NAMES = {
+    "extensions.vector": "vector",
+    "pg_catalog.date": "date",
+    "pg_catalog.int4": "integer",
+    "pg_catalog.jsonb": "jsonb",
+    "pg_catalog.text": "text",
+    "pg_catalog.timestamptz": "timestamp with time zone",
+}
 
 
 class InspectionError(RuntimeError):
@@ -282,20 +291,31 @@ def inspect_supabase_connection(
         {signature.removeprefix("public.").partition("(")[0] for signature in expected_functions}
     )
     cursor.execute(
-        "SELECT p.oid::regprocedure::text, pg_get_functiondef(p.oid) "
+        "SELECT p.proname, "
+        "ARRAY("
+        "SELECT type_namespace.nspname || '.' || type_info.typname "
+        "FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY "
+        "AS argument(type_oid, ordinal) "
+        "JOIN pg_catalog.pg_type type_info ON type_info.oid = argument.type_oid "
+        "JOIN pg_catalog.pg_namespace type_namespace "
+        "ON type_namespace.oid = type_info.typnamespace "
+        "ORDER BY argument.ordinal"
+        "), pg_get_functiondef(p.oid) "
         "FROM pg_catalog.pg_proc p "
         "JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace "
         "WHERE n.nspname = 'public' "
         "AND p.proname = ANY(%s::text[]) "
-        "ORDER BY p.oid::regprocedure::text",
+        "ORDER BY p.proname, p.oid",
         (expected_function_names,),
     )
     functions = tuple(
-        (
-            signature if signature.startswith("public.") else f"public.{signature}",
-            definition,
+        sorted(
+            (
+                _canonical_public_function_signature(function_name, argument_types),
+                definition,
+            )
+            for function_name, argument_types, definition in cursor.fetchall()
         )
-        for signature, definition in cursor.fetchall()
     )
     if tuple(name for name, _definition in functions) != tuple(sorted(expected_functions)):
         raise InspectionError("supabase_function_inventory_invalid")
@@ -345,3 +365,20 @@ def _positive_integer(value: object) -> bool:
 
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _canonical_public_function_signature(
+    function_name: object, argument_types: object
+) -> str:
+    if (
+        not isinstance(function_name, str)
+        or _FUNCTION_IDENTIFIER.fullmatch(function_name) is None
+        or not isinstance(argument_types, (list, tuple))
+    ):
+        raise InspectionError("supabase_function_inventory_invalid")
+    canonical_types: list[str] = []
+    for type_name in argument_types:
+        if not isinstance(type_name, str) or type_name not in _CATALOG_TYPE_NAMES:
+            raise InspectionError("supabase_function_inventory_invalid")
+        canonical_types.append(_CATALOG_TYPE_NAMES[type_name])
+    return f"public.{function_name}({','.join(canonical_types)})"
