@@ -41,6 +41,7 @@ from mercury_release_control.public_tree import PublicTreeError, build_public_tr
 from mercury_release_control.release_profile import (
     ReleaseProfile,
     ReleaseProfileError,
+    release_profile,
     release_profile_from_policy,
 )
 
@@ -71,17 +72,7 @@ _TRUSTED_GITLEAKS_CONFIG_SHA256 = (
     "663510fb05b8b6e58c3d8634364f52bfc03614cf00d0f6985203a03d473dd68f"
 )
 
-TRUSTED_SURFACES = (
-    "git_all_refs",
-    "github_pull_request_refs",
-    "github_releases_and_assets",
-    "github_actions_logs_artifacts_caches",
-    "github_packages_pages_wiki",
-    "marketplace_snapshot",
-    "render_build_and_runtime_logs",
-    "supabase_knowledge_and_storage",
-    "public_mcp_responses",
-)
+TRUSTED_SURFACES = release_profile("0.3.0").trusted_surfaces
 _CANDIDATE_SURFACES = (
     *TRUSTED_SURFACES[:8],
     "wheel_sdist_plugin_source_archives",
@@ -3506,7 +3497,7 @@ def inspect(
         _surface(
             name, hashes=surface_hashes[name], started_at=completed_at, completed_at=completed_at
         )
-        for name in TRUSTED_SURFACES
+        for name in profile.trusted_surfaces
     ]
     evidence: dict[str, object] = {
         "schema_version": 1,

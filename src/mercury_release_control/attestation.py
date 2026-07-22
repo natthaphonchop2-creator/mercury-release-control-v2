@@ -67,8 +67,8 @@ class TrustedAttestationV2(_AttestationModel):
     schema_version: Literal[2]
     staging: StagingReceipt
     surface_evidence_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    surface_count: Literal[8]
-    surfaces: tuple[SurfaceReceipt, ...] = Field(min_length=8, max_length=8)
+    surface_count: Literal[8, 9]
+    surfaces: tuple[SurfaceReceipt, ...] = Field(min_length=8, max_length=9)
     version: str = Field(pattern=SUPPORTED_VERSION_PATTERN)
     workflow: WorkflowReceipt
 
@@ -98,7 +98,10 @@ def assemble_attestation(
         raise AttestationError("attestation_identity_mismatch")
     if surface_evidence.get("reviewed_commit_sha") != evidence.reviewed_sha:
         raise AttestationError("attestation_identity_mismatch")
-    surface_digest, surfaces = _surface_receipts(surface_evidence)
+    surface_digest, surfaces = _surface_receipts(
+        surface_evidence,
+        expected_surfaces=profile.trusted_surfaces,
+    )
     payload = {
         "expires_at": issued_at + timedelta(minutes=60),
         "issued_at": issued_at,
@@ -139,7 +142,10 @@ def validate_attestation(attestation: TrustedAttestationV2, *, now: datetime) ->
         or attestation.reviewed_sha != attestation.provider_evidence.reviewed_sha
         or attestation.provider_evidence.version != profile.version
         or attestation.staging.ref != profile.staging_ref(attestation.reviewed_sha)
-        or tuple(item.surface for item in attestation.surfaces) != _SURFACE_NAMES
+        or attestation.surface_count != len(profile.trusted_surfaces)
+        or len(attestation.surfaces) != len(profile.trusted_surfaces)
+        or tuple(item.surface for item in attestation.surfaces)
+        != profile.trusted_surfaces
         or any(item.completed_at > attestation.issued_at for item in attestation.surfaces)
     ):
         raise AttestationError("attestation_identity_mismatch")
@@ -163,24 +169,18 @@ def _payload_digest(payload: dict[str, object]) -> str:
     ).hexdigest()
 
 
-_SURFACE_NAMES = (
-    "git_all_refs",
-    "github_pull_request_refs",
-    "github_releases_and_assets",
-    "github_actions_logs_artifacts_caches",
-    "github_packages_pages_wiki",
-    "marketplace_snapshot",
-    "render_build_and_runtime_logs",
-    "supabase_knowledge_and_storage",
-)
-
-
 def _surface_receipts(
     evidence: Mapping[str, object],
+    *,
+    expected_surfaces: tuple[str, ...],
 ) -> tuple[str, tuple[SurfaceReceipt, ...]]:
     surfaces = evidence.get("surfaces")
     reviewed_sha = evidence.get("reviewed_commit_sha")
-    if not isinstance(surfaces, list) or len(surfaces) != 8 or not isinstance(reviewed_sha, str):
+    if (
+        not isinstance(surfaces, list)
+        or len(surfaces) != len(expected_surfaces)
+        or not isinstance(reviewed_sha, str)
+    ):
         raise AttestationError("attestation_surface_evidence_invalid")
     receipts: list[SurfaceReceipt] = []
     for surface in surfaces:
@@ -213,7 +213,7 @@ def _surface_receipts(
             raise AttestationError("attestation_surface_evidence_invalid")
         receipts.append(receipt)
     normalized = tuple(receipts)
-    if tuple(item.surface for item in normalized) != _SURFACE_NAMES:
+    if tuple(item.surface for item in normalized) != expected_surfaces:
         raise AttestationError("attestation_surface_evidence_invalid")
     encoded = json.dumps(_jsonable(dict(evidence)), separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(encoded.encode()).hexdigest(), normalized
