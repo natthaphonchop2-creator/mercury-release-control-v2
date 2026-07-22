@@ -191,6 +191,64 @@ def test_supabase_inspection_starts_read_only_and_requires_exact_inventory() -> 
     assert observed["table_count"] == 17
     assert observed["function_count"] == 11
     assert observed["rag_identity_count"] == 254
+    function_query = next(call for call in calls if "pg_get_functiondef" in call[0])
+    assert "p.proname = ANY" in function_query[0]
+    assert function_query[1] == (
+        sorted(
+            {
+                signature.removeprefix("public.").partition("(")[0]
+                for signature in profile.supabase_function_signatures
+            }
+        ),
+    )
+
+
+def test_supabase_inspection_canonicalizes_visible_public_function_signatures() -> None:
+    tables = [f"table_{index:02d}" for index in range(17)]
+    profile = release_profile("0.3.0")
+    definitions = {
+        name: f"definition:{name}" for name in profile.supabase_function_signatures
+    }
+    functions = {
+        name: hashlib.sha256(definition.encode()).hexdigest()
+        for name, definition in definitions.items()
+    }
+
+    class Cursor:
+        last = ""
+
+        def execute(self, query: str, parameters: tuple[object, ...] = ()) -> None:
+            self.last = query
+
+        def fetchall(self):
+            if "pg_catalog.pg_tables" in self.last:
+                return [(name,) for name in tables]
+            if "pg_get_functiondef" in self.last:
+                return [
+                    (name.removeprefix("public."), definition)
+                    for name, definition in sorted(definitions.items())
+                ]
+            if "schema_migrations" in self.last:
+                return [("20260719120000",)]
+            if "erp_action_validation_knowledge" in self.last:
+                return [(254,)]
+            raise AssertionError(self.last)
+
+    class Connection:
+        pgconn = SimpleNamespace(ssl_in_use=True)
+
+        def cursor(self) -> Cursor:
+            return Cursor()
+
+    observed = inspect_supabase_connection(
+        Connection(),
+        expected_tables=tables,
+        expected_functions=functions,
+        expected_migration_id="20260719120000",
+        version="0.3.0",
+    )
+
+    assert observed["function_count"] == 11
 
 
 def test_supabase_inspection_rejects_function_definition_hash_drift() -> None:
