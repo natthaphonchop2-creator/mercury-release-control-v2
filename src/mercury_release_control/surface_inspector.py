@@ -2972,7 +2972,11 @@ def _database_cursor(connection: Any) -> Any:
 def _database_rows(
     cursor: Any, query: str, parameters: Sequence[object] = ()
 ) -> list[tuple[object, ...]]:
-    cursor.execute(query, tuple(parameters))
+    bound_parameters = tuple(parameters)
+    if bound_parameters:
+        cursor.execute(query, bound_parameters)
+    else:
+        cursor.execute(query)
     rows = cursor.fetchall()
     if not isinstance(rows, list) or any(not isinstance(row, tuple) for row in rows):
         raise InspectionError("database_response_invalid")
