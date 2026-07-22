@@ -51,6 +51,7 @@ MAX_UNTRUSTED_JSON_BYTES = 2 * 1024 * 1024
 MAX_HTTP_BYTES = 32 * 1024 * 1024
 MAX_TOTAL_HTTP_BYTES = 256 * 1024 * 1024
 MAX_HTTP_OBJECTS = 200
+MAX_HOSTED_SCAN_OBJECTS = 512
 MAX_HTTP_REQUESTS = 1_000
 MAX_PAGES = 20
 MAX_PROCESS_OUTPUT_BYTES = 64 * 1024
@@ -353,7 +354,7 @@ class InspectionBudget:
     def charge_object(self) -> None:
         self.check_time()
         self.objects += 1
-        if self.objects > MAX_HTTP_OBJECTS:
+        if self.objects > MAX_HOSTED_SCAN_OBJECTS:
             raise InspectionError("hosted_payload_budget_exhausted")
 
 
@@ -939,10 +940,16 @@ def _github_json(
 
 
 def _github_records(
-    path: str, token: str, *, key: str | None = None
+    path: str,
+    token: str,
+    *,
+    key: str | None = None,
+    maximum: int = MAX_HTTP_OBJECTS,
 ) -> tuple[list[Mapping[str, object]], list[str]]:
     """Fetch bounded GitHub pagination and return only data hashes as evidence."""
 
+    if maximum < 1 or maximum > MAX_HOSTED_SCAN_OBJECTS:
+        raise InspectionError("github_inventory_limit_invalid")
     current = path
     records: list[Mapping[str, object]] = []
     hashes: list[str] = []
@@ -954,7 +961,7 @@ def _github_records(
             values = container.get(key)
         if not isinstance(values, list):
             raise InspectionError("github_response_invalid")
-        if len(records) + len(values) > MAX_HTTP_OBJECTS:
+        if len(records) + len(values) > maximum:
             raise InspectionError("github_inventory_too_large")
         for value in values:
             records.append(_require_mapping(value, "github_response_invalid"))
@@ -2413,10 +2420,16 @@ def _inspect_github_actions(
     budget: InspectionBudget,
 ) -> list[str]:
     runs, run_hashes = _github_records(
-        f"/repos/{repository}/actions/runs?per_page=100", token, key="workflow_runs"
+        f"/repos/{repository}/actions/runs?per_page=100",
+        token,
+        key="workflow_runs",
+        maximum=MAX_HOSTED_SCAN_OBJECTS,
     )
     artifacts, artifact_hashes = _github_records(
-        f"/repos/{repository}/actions/artifacts?per_page=100", token, key="artifacts"
+        f"/repos/{repository}/actions/artifacts?per_page=100",
+        token,
+        key="artifacts",
+        maximum=MAX_HOSTED_SCAN_OBJECTS,
     )
     caches, cache_hashes = _github_records(
         f"/repos/{repository}/actions/caches?per_page=100", token, key="actions_caches"

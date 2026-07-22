@@ -21,6 +21,40 @@ from mercury_release_control.surface_inspector import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_hosted_payload_budget_reserves_capacity_beyond_general_inventory() -> None:
+    budget = inspector.InspectionBudget(started=inspector.time.monotonic())
+
+    for _ in range(inspector.MAX_HTTP_OBJECTS + 3):
+        budget.charge_object()
+
+    assert budget.objects == inspector.MAX_HTTP_OBJECTS + 3
+    for _ in range(inspector.MAX_HOSTED_SCAN_OBJECTS - budget.objects):
+        budget.charge_object()
+    with pytest.raises(InspectionError, match="^hosted_payload_budget_exhausted$"):
+        budget.charge_object()
+
+
+def test_github_records_supports_a_larger_bounded_actions_inventory(monkeypatch) -> None:
+    records = [{"id": index + 1} for index in range(inspector.MAX_HTTP_OBJECTS + 1)]
+    response = inspector.HttpResponse(status=200, headers={}, body=b"[]")
+    monkeypatch.setattr(
+        inspector,
+        "_github_json",
+        lambda *_args, **_kwargs: (records, response),
+    )
+
+    with pytest.raises(InspectionError, match="^github_inventory_too_large$"):
+        inspector._github_records("/repos/example/actions/runs", "token")
+
+    observed, _hashes = inspector._github_records(
+        "/repos/example/actions/runs",
+        "token",
+        maximum=inspector.MAX_HOSTED_SCAN_OBJECTS,
+    )
+
+    assert observed == records
+
+
 def test_github_download_redirect_hosts_are_exact_and_include_actions_logs() -> None:
     assert frozenset(
         {
