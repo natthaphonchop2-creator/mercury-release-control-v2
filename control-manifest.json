@@ -15,7 +15,7 @@
     "src/mercury_release_control/attestation.py": "389a4704b7e5cc7ac35f213b3613ceaa35d032a856e4c53d43f07257ca110962",
     "src/mercury_release_control/github_preflight.py": "28c7e8340eb691961c2393133cd0e7b6738d404f936ab42ffe5bb1f0535092b4",
     "src/mercury_release_control/github_publication.py": "27fc391aea9e8301b51a4793e9d11b95c2d5065974495765fcfca720ab1bc626",
-    "src/mercury_release_control/guardian.py": "1521fd8fbf2fb7aaad46cdd3ea2a1681953f3ae68d7d0d3301a4bce80cd53901",
+    "src/mercury_release_control/guardian.py": "4c0909dab6882251ac3a3e3c49c7074f3c2680f39414f631b26a9c3fbd6f2383",
     "src/mercury_release_control/handoff.py": "29d66537b892c2b96fc370e878de73da46b15078ed4778d89aabda634251e4bd",
     "src/mercury_release_control/hosted_collector.py": "71a66f8a6e34abc58792ad1603d3cad650333550d726968388af4a94f873d599",
     "src/mercury_release_control/preflight.py": "52dde96c3954c8cbe1415758fbafbc0977968d9dc8817c7565e993b58c406a32",

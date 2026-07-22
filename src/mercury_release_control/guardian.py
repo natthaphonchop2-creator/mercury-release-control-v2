@@ -46,7 +46,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "a8efdc960dadcabae052dd4f0b80d5f5e1b3bf87175527c04a4201b4d2d8ff16"
     ),
     "policy-v0.2.2.json": "0423ed845a15bec907a6b8ec6e6a0ef1a6adacc1041a7a7f7b267fe3a97912b8",
-    "policy-v0.3.0.json": ("99257a73028d846065f65c938914388d0aaaae249204da82f6252b108acf4d38"),
+    "policy-v0.3.0.json": ("3e0a3ae4b43104c6e3732c260b127a59bddf2ad47c4c9289f0b1bfaac3c68e66"),
     "pyproject.toml": "f7ea42368cec3da102875f56dc7d70967a77b3794073e28416705d46fbc0663b",
     "src/mercury_release_control/__init__.py": (
         "735f223b0e1fe89a4515496dbec2e3dbc30218c044a9085624e5ada69af22ad9"
