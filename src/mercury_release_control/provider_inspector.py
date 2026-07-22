@@ -30,6 +30,7 @@ _CATALOG_TYPE_NAMES = {
     "pg_catalog.jsonb": "jsonb",
     "pg_catalog.text": "text",
     "pg_catalog.timestamptz": "timestamp with time zone",
+    "public.vector": "vector",
 }
 
 
