@@ -176,6 +176,22 @@ def test_shared_pooler_login_resolves_to_postgres_database_role() -> None:
     assert plan.expected_role == "postgres"
 
 
+def test_database_rows_omits_empty_parameter_sequence_for_literal_percent() -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class Cursor:
+        def execute(self, *args: object) -> None:
+            calls.append(args)
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return []
+
+    query = "SELECT document_uri FROM documents WHERE document_uri LIKE 'mercury://wiki/%'"
+
+    assert inspector._database_rows(Cursor(), query) == []
+    assert calls == [(query,)]
+
+
 def _valid_environment() -> dict[str, str]:
     return {
         "FLOWACCOUNT_SANDBOX_BASE_URL": "https://openapi.flowaccount.com/test",
