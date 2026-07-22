@@ -278,16 +278,25 @@ def inspect_supabase_connection(
     tables = tuple(row[0] for row in cursor.fetchall())
     if tables != tuple(sorted(expected_tables)):
         raise InspectionError("supabase_table_inventory_invalid")
+    expected_function_names = sorted(
+        {signature.removeprefix("public.").partition("(")[0] for signature in expected_functions}
+    )
     cursor.execute(
         "SELECT p.oid::regprocedure::text, pg_get_functiondef(p.oid) "
         "FROM pg_catalog.pg_proc p "
         "JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace "
         "WHERE n.nspname = 'public' "
-        "AND p.oid::regprocedure::text = ANY(%s::text[]) "
+        "AND p.proname = ANY(%s::text[]) "
         "ORDER BY p.oid::regprocedure::text",
-        (list(sorted(expected_functions)),),
+        (expected_function_names,),
     )
-    functions = tuple((row[0], row[1]) for row in cursor.fetchall())
+    functions = tuple(
+        (
+            signature if signature.startswith("public.") else f"public.{signature}",
+            definition,
+        )
+        for signature, definition in cursor.fetchall()
+    )
     if tuple(name for name, _definition in functions) != tuple(sorted(expected_functions)):
         raise InspectionError("supabase_function_inventory_invalid")
     for name, definition in functions:

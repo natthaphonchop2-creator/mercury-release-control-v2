@@ -73,7 +73,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "9d59f730219c6575558b5e820d826ce4cfd90de37a556d01d4d9a3339975dc2d"
     ),
     "src/mercury_release_control/provider_inspector.py": (
-        "1edca4e17c0323922a0fc0ec417ad1ffe698ff1ce83e559fa9379d68a4ebb5b2"
+        "a78cce078e8197afcc860ab423e8b30ef6c6666489ecf4fdbe7029553c90d1d5"
     ),
     "src/mercury_release_control/public_tree.py": (
         "27b2e3bb0a74348cfc13b270920b68099c9264b751e53c56a54cebaa5431c29d"
