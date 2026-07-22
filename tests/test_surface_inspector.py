@@ -1296,6 +1296,16 @@ def test_surface_inspector_routes_v022_profile_only_to_versioned_collectors(
     )
 
     assert evidence["render"]["version"] == "0.2.2"
+    assert tuple(item["surface"] for item in evidence["surfaces"]) == (
+        "git_all_refs",
+        "github_pull_request_refs",
+        "github_releases_and_assets",
+        "github_actions_logs_artifacts_caches",
+        "github_packages_pages_wiki",
+        "marketplace_snapshot",
+        "render_build_and_runtime_logs",
+        "supabase_knowledge_and_storage",
+    )
     assert render_probe.call_args.kwargs["profile"].version == "0.2.2"
     assert "profile" not in release_probe.call_args.kwargs
     assert "profile" not in actions_probe.call_args.kwargs

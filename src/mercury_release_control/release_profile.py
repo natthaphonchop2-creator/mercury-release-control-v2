@@ -29,6 +29,18 @@ _COMMON_FUNCTIONS = (
     "public.validation_text_has_safe_label_assignment(text)",
 )
 
+_V022_TRUSTED_SURFACES = (
+    "git_all_refs",
+    "github_pull_request_refs",
+    "github_releases_and_assets",
+    "github_actions_logs_artifacts_caches",
+    "github_packages_pages_wiki",
+    "marketplace_snapshot",
+    "render_build_and_runtime_logs",
+    "supabase_knowledge_and_storage",
+)
+_V030_TRUSTED_SURFACES = (*_V022_TRUSTED_SURFACES, "public_mcp_responses")
+
 _V022_TOOLS = frozenset(
     {
         "check_flow_syntax",
@@ -97,6 +109,7 @@ class ReleaseProfile:
     migration_id: str
     hosted_tool_names: frozenset[str]
     supabase_function_signatures: tuple[str, ...]
+    trusted_surfaces: tuple[str, ...]
     required_approving_review_count: int
     prevent_self_review: bool
     catalog_action_count: int = 254
@@ -143,6 +156,7 @@ _PROFILES = {
         migration_id="20260716100000",
         hosted_tool_names=_V022_TOOLS,
         supabase_function_signatures=_COMMON_FUNCTIONS,
+        trusted_surfaces=_V022_TRUSTED_SURFACES,
         required_approving_review_count=1,
         prevent_self_review=True,
     ),
@@ -158,6 +172,7 @@ _PROFILES = {
             "public.mercury_capability_states_are_safe(jsonb)",
             *_COMMON_FUNCTIONS[4:],
         ),
+        trusted_surfaces=_V030_TRUSTED_SURFACES,
         required_approving_review_count=0,
         prevent_self_review=False,
     ),
