@@ -4,6 +4,7 @@ import hashlib
 import json
 import tarfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import create_autospec
 
 import pytest
@@ -118,6 +119,48 @@ def test_render_deployments_reject_malformed_cursor_envelopes(
 ) -> None:
     with pytest.raises(InspectionError, match="^render_deployment_invalid$"):
         inspector._render_deployments(payload)
+
+
+def test_surface_database_tls_identity_uses_psycopg3_pgconn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Cursor:
+        def execute(self, _query: str, _parameters: tuple[object, ...] = ()) -> None:
+            return None
+
+        def fetchone(self) -> tuple[str, str, str]:
+            return ("wrong-database", "wrong-session", "wrong-user")
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return []
+
+    class Connection:
+        pgconn = SimpleNamespace(ssl_in_use=True)
+
+        def cursor(self) -> Cursor:
+            return Cursor()
+
+        def rollback(self) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        inspector.importlib,
+        "import_module",
+        lambda _name: SimpleNamespace(connect=lambda **_kwargs: Connection()),
+    )
+
+    with pytest.raises(InspectionError, match="^database_identity_mismatch$"):
+        inspector.inspect_database(
+            policy=_configured_policy(),
+            database_url=(
+                "postgresql://postgres:password@"
+                "db.vbnlkqvauqwnjbxngkas.supabase.co:5432/postgres?sslmode=verify-full"
+            ),
+            expected_validation_identities=(),
+        )
 
 
 def _valid_environment() -> dict[str, str]:

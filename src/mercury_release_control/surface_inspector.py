@@ -3049,8 +3049,11 @@ def inspect_database(
         cursor = _database_cursor(connection)
         cursor.execute("BEGIN READ ONLY")
         cursor.execute("SET LOCAL statement_timeout = '15000ms'")
-        info = getattr(connection, "info", None)
-        if info is None or getattr(info, "ssl_in_use", None) is not True:
+        try:
+            tls_in_use = connection.pgconn.ssl_in_use
+        except Exception:
+            tls_in_use = False
+        if tls_in_use is not True:
             raise InspectionError("database_tls_identity_invalid")
         cursor.execute("SELECT current_database(), session_user, current_user")
         identity = cursor.fetchone()

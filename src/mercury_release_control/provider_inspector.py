@@ -263,7 +263,11 @@ def inspect_supabase_connection(
         or expected_migration_id != profile.migration_id
     ):
         raise InspectionError("supabase_policy_invalid")
-    if getattr(getattr(connection, "info", None), "ssl_in_use", None) is not True:
+    try:
+        tls_in_use = connection.pgconn.ssl_in_use
+    except Exception:
+        tls_in_use = False
+    if tls_in_use is not True:
         raise InspectionError("database_tls_invalid")
     cursor = connection.cursor()
     cursor.execute("BEGIN READ ONLY")
