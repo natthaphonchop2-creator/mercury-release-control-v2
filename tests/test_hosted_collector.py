@@ -6,11 +6,13 @@ import pytest
 
 from mercury_release_control.hosted_collector import (
     HostedProviderCollector,
+    _assert_no_secret,
     _live_deploy,
     _mcp_envelope,
     _parse_json,
     _render_log_url,
     _Response,
+    _secret_environment_values,
     _tool_payload,
 )
 from mercury_release_control.provider_inspector import InspectionError
@@ -90,3 +92,36 @@ def test_hosted_collector_render_log_urls_bind_owner_id(log_type: str) -> None:
         "resource": ["srv-d978tk37uimc73ej52mg"],
         "type": [log_type],
     }
+
+
+def test_render_log_scan_allows_public_provider_metadata() -> None:
+    environment = {
+        "MERCURY_PUBLIC_MCP_URL": "https://mercury-tools-mcp.onrender.com",
+        "MERCURY_REVIEWED_COMMIT_SHA": "a" * 40,
+        "RENDER_OWNER_ID": "tea_01HZX6R9HQSPX9K4GTDR",
+        "RENDER_SERVICE_ID": "srv-d978tk37uimc73ej52mg",
+        "FLOWACCOUNT_SANDBOX_CLIENT_SECRET": "private-client-secret-value",
+        "MERCURY_PUBLIC_MCP_TOKEN": "private-mcp-token-value",
+        "SUPABASE_DB_URL": "postgresql://user:private-password@db.example.test/postgres",
+    }
+    payload = (
+        b"deploying aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa to "
+        b"https://mercury-tools-mcp.onrender.com "
+        b"for tea_01HZX6R9HQSPX9K4GTDR/srv-d978tk37uimc73ej52mg"
+    )
+
+    _assert_no_secret(payload, _secret_environment_values(environment))
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    (
+        ("FLOWACCOUNT_SANDBOX_CLIENT_SECRET", "private-client-secret-value"),
+        ("MERCURY_PUBLIC_MCP_TOKEN", "private-mcp-token-value"),
+        ("CUSTOM_API_KEY", "private-custom-api-key-value"),
+        ("SUPABASE_DB_URL", "postgresql://user:private-password@db.example.test/postgres"),
+    ),
+)
+def test_render_log_scan_rejects_sensitive_environment_values(key: str, value: str) -> None:
+    with pytest.raises(InspectionError, match="^render_log_secret_found$"):
+        _assert_no_secret(value.encode(), _secret_environment_values({key: value}))

@@ -29,6 +29,10 @@ _CREDENTIAL_KEY = re.compile(
     r"(?:api[_-]?key|authorization|client[_-]?(?:id|secret)|credential|password|secret|token)",
     re.IGNORECASE,
 )
+_CONNECTION_SECRET_KEY = re.compile(
+    r"(?:^|_)(?:(?:database|db)_(?:url|uri)|connection_string)$",
+    re.IGNORECASE,
+)
 _SECRET_VALUE = re.compile(
     rb"(?:gh[pousr]_[A-Za-z0-9_]{16,}|github_pat_[A-Za-z0-9_]{16,}|"
     rb"eyJ[A-Za-z0-9_-]{16,}|-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----)"
@@ -164,7 +168,7 @@ class HostedProviderCollector:
                 ),
                 headers=render_headers,
             ).body
-            _assert_no_secret(raw, environment.values())
+            _assert_no_secret(raw, _secret_environment_values(environment))
         return (
             {
                 "catalog_action_count": len(actions),
@@ -504,6 +508,18 @@ def _assert_no_secret(payload: bytes, values) -> None:
     for value in values:
         if isinstance(value, str) and len(value) >= 12 and value.encode() in payload:
             raise InspectionError("render_log_secret_found")
+
+
+def _secret_environment_values(environment: Mapping[str, str]) -> tuple[str, ...]:
+    return tuple(
+        value
+        for key, value in environment.items()
+        if isinstance(value, str)
+        and (
+            _CREDENTIAL_KEY.search(key) is not None
+            or _CONNECTION_SECRET_KEY.search(key) is not None
+        )
+    )
 
 
 def _https_base(value: str) -> str:
