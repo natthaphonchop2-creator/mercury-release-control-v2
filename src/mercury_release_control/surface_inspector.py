@@ -804,10 +804,10 @@ def parse_database_url(value: str, *, project_ref: str) -> DbConnectionPlan:
             raise InspectionError("database_role_invalid")
         return DbConnectionPlan("direct", hostname, port, "postgres", "postgres", user, password)
     if _POOLER_RE.fullmatch(hostname) is not None:
-        expected_role = f"postgres.{project_ref}"
-        if user != expected_role:
+        pooler_user = f"postgres.{project_ref}"
+        if user != pooler_user:
             raise InspectionError("database_role_invalid")
-        return DbConnectionPlan("pooler", hostname, port, "postgres", expected_role, user, password)
+        return DbConnectionPlan("pooler", hostname, port, "postgres", "postgres", user, password)
     raise InspectionError("database_hostname_invalid")
 
 
