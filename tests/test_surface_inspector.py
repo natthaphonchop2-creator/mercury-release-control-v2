@@ -21,6 +21,27 @@ from mercury_release_control.surface_inspector import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class _HttpStream:
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+        self._offset = 0
+        self.headers: dict[str, str] = {}
+
+    def __enter__(self) -> _HttpStream:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def getcode(self) -> int:
+        return 200
+
+    def read(self, amount: int) -> bytes:
+        start = self._offset
+        self._offset = min(len(self._body), start + amount)
+        return self._body[start : self._offset]
+
+
 def test_hosted_payload_budget_reserves_capacity_beyond_general_inventory() -> None:
     budget = inspector.InspectionBudget(started=inspector.time.monotonic())
 
@@ -152,6 +173,45 @@ def test_github_json_passes_shared_budget_to_network(monkeypatch) -> None:
     assert observed == [budget]
 
 
+def test_github_inventory_and_payload_share_request_budget(monkeypatch) -> None:
+    responses = iter((_HttpStream(b"[]"),))
+    monkeypatch.setattr(inspector, "MAX_HTTP_REQUESTS", 1)
+    monkeypatch.setattr(inspector, "_open_url", lambda *_args, **_kwargs: next(responses))
+    budget = inspector.InspectionBudget(started=inspector.time.monotonic())
+
+    records, _hashes = inspector._github_records(
+        "/repos/example/actions/runs", "token", budget=budget
+    )
+
+    assert records == []
+    assert budget.requests == 1
+    with pytest.raises(InspectionError, match="^network_request_budget_exhausted$"):
+        inspector.request_bytes(
+            "https://api.github.com/repos/example/actions/runs/1/logs",
+            budget=budget,
+        )
+
+
+def test_github_inventory_and_payload_share_byte_budget(monkeypatch) -> None:
+    inventory = b"[]"
+    payload = b"payload"
+    responses = iter((_HttpStream(inventory), _HttpStream(payload)))
+    monkeypatch.setattr(inspector, "MAX_TOTAL_HTTP_BYTES", len(inventory) + len(payload) - 1)
+    monkeypatch.setattr(inspector, "_open_url", lambda *_args, **_kwargs: next(responses))
+    budget = inspector.InspectionBudget(started=inspector.time.monotonic())
+
+    records, _hashes = inspector._github_records(
+        "/repos/example/actions/runs", "token", budget=budget
+    )
+
+    assert records == []
+    with pytest.raises(InspectionError, match="^network_byte_budget_exhausted$"):
+        inspector.request_bytes(
+            "https://api.github.com/repos/example/actions/runs/1/logs",
+            budget=budget,
+        )
+
+
 def test_github_actions_shares_budget_and_scans_each_download_immediately(monkeypatch) -> None:
     budget = inspector.InspectionBudget(started=inspector.time.monotonic())
     runs = [{"id": 11}, {"id": 12}]
@@ -252,6 +312,89 @@ def test_github_actions_rejects_aggregate_payloads_before_download(monkeypatch) 
 
     with pytest.raises(InspectionError, match="^hosted_payload_budget_exhausted$"):
         inspector._inspect_github_actions(
+            token="token",
+            repository="example/repository",
+            gitleaks=Path("gitleaks"),
+            trufflehog=Path("trufflehog"),
+            allowlist=frozenset(),
+            budget=inspector.InspectionBudget(started=inspector.time.monotonic()),
+        )
+
+    assert downloaded == []
+
+
+def test_github_release_assets_share_budget_and_scan_lazily(monkeypatch) -> None:
+    budget = inspector.InspectionBudget(started=inspector.time.monotonic())
+    releases = [{"id": 1, "assets": [{"id": 31}, {"id": 32}]}]
+    events: list[tuple[str, bytes]] = []
+    observed_download_budgets: list[inspector.InspectionBudget | None] = []
+
+    def records_probe(
+        *_args: object, **_kwargs: object
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        assert _kwargs.get("budget") is budget
+        return releases, ["release-inventory"]
+
+    def request_probe(
+        url: str,
+        *,
+        budget: inspector.InspectionBudget | None = None,
+        **_kwargs: object,
+    ) -> inspector.HttpResponse:
+        body = url.encode("ascii")
+        observed_download_budgets.append(budget)
+        events.append(("download", body))
+        return inspector.HttpResponse(status=200, headers={}, body=body)
+
+    def scan_probe(
+        payloads: object,
+        *,
+        budget: inspector.InspectionBudget | None = None,
+        **_kwargs: object,
+    ) -> list[str]:
+        assert budget is not None
+        hashes: list[str] = []
+        for payload in payloads:  # type: ignore[union-attr]
+            events.append(("scan", payload))
+            budget.charge_object()
+            hashes.append(inspector._sha256_bytes(payload))
+        return hashes
+
+    monkeypatch.setattr(inspector, "_github_records", records_probe)
+    monkeypatch.setattr(inspector, "request_bytes", request_probe)
+    monkeypatch.setattr(inspector, "_scan_payloads", scan_probe)
+
+    hashes = inspector._inspect_github_releases(
+        token="token",
+        repository="example/repository",
+        gitleaks=Path("gitleaks"),
+        trufflehog=Path("trufflehog"),
+        allowlist=frozenset(),
+        budget=budget,
+    )
+
+    assert hashes[0] == "release-inventory"
+    assert observed_download_budgets == [budget, budget]
+    assert [kind for kind, _payload in events] == ["download", "scan", "download", "scan"]
+    assert budget.objects == 2
+
+
+def test_github_release_assets_reject_aggregate_before_download(monkeypatch) -> None:
+    assets = [{"id": index + 1} for index in range(inspector.MAX_HOSTED_SCAN_OBJECTS + 1)]
+    downloaded: list[str] = []
+    monkeypatch.setattr(
+        inspector,
+        "_github_records",
+        lambda *_args, **_kwargs: ([{"id": 1, "assets": assets}], []),
+    )
+    monkeypatch.setattr(
+        inspector,
+        "request_bytes",
+        lambda url, **_kwargs: downloaded.append(url),
+    )
+
+    with pytest.raises(InspectionError, match="^hosted_payload_budget_exhausted$"):
+        inspector._inspect_github_releases(
             token="token",
             repository="example/repository",
             gitleaks=Path("gitleaks"),
@@ -1134,7 +1277,9 @@ def test_surface_inspector_routes_v022_profile_only_to_versioned_collectors(
     monkeypatch.setattr(inspector, "_inspect_marketplace", marketplace_probe)
     monkeypatch.setattr(inspector, "_inspect_render_and_public_mcp", render_probe)
     monkeypatch.setattr(inspector, "inspect_database", database_probe)
-    monkeypatch.setattr(inspector, "_flowaccount_live_read", lambda _environment: digest)
+    monkeypatch.setattr(
+        inspector, "_flowaccount_live_read", lambda _environment, **_kwargs: digest
+    )
 
     evidence = inspector.inspect(
         policy_path=policy_path,

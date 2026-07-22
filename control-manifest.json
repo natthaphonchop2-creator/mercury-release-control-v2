@@ -43,7 +43,7 @@
     "tests/test_publish_workflow.py": "47cbf177e677f57c49d920df65cf9932b5ed0b37ad62fed76d69f9951b1f9979",
     "tests/test_publish_workflow_structure.py": "b26abc69808df703c1bf50a5bcf2dee1d8df6c3e62ed27365519a6678b0aa45c",
     "tests/test_staging.py": "9ee98fb09abc011ce1bff195981abfcc390a86b1714391550191d5c326519371",
-    "tests/test_surface_inspector.py": "8e33132320e910dbf5e6c479a3cad77d6bd609d575de748e3f31a390dd4f7292",
+    "tests/test_surface_inspector.py": "4ba8c1a6014fdce3ede1bd235f139300d72c42ead21787189bfaeaf7f0894c1b",
     "tests/test_v022_compatibility.py": "8b040dcba23bfb171c402c196e4a6694052438eea3b4dd4eb34ae6e08153c44b",
     "tests/test_v030_controls.py": "83f3eaf40a4259a819b391ec9a683da995c0db3160d4d2d413bcea8c0bdff9ef",
     "tests/test_workflow.py": "6564d3d0024aa7a7cb2f38394ff8f59c269bd7cc293750490a05b2914da868b0",
