@@ -45,8 +45,8 @@ V030_TRUSTED_FILE_SHA256 = {
     ".github/workflows/publish-v0.3.0.yml": (
         "a8efdc960dadcabae052dd4f0b80d5f5e1b3bf87175527c04a4201b4d2d8ff16"
     ),
-    "policy-v0.2.2.json": "5cd5ae84f8ae04314b0be80c3cc947fd59e65b56ec19fabffc14fa1d0fa2306a",
-    "policy-v0.3.0.json": ("b363c4f6cbba42c10cce2c0fb5b594ab46c7e8d1fab0b96417ee0d4fa8e1c907"),
+    "policy-v0.2.2.json": "7f761c0400596e38344bdced8ca138c30472cc7208cd9569d052d1a7cc729943",
+    "policy-v0.3.0.json": ("f3db30a8f7ba9594ccde2c84e7f2f4bca153133ba7123130315e02af04d645c0"),
     "pyproject.toml": "f7ea42368cec3da102875f56dc7d70967a77b3794073e28416705d46fbc0663b",
     "src/mercury_release_control/__init__.py": (
         "735f223b0e1fe89a4515496dbec2e3dbc30218c044a9085624e5ada69af22ad9"
@@ -73,7 +73,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "9d59f730219c6575558b5e820d826ce4cfd90de37a556d01d4d9a3339975dc2d"
     ),
     "src/mercury_release_control/provider_inspector.py": (
-        "410c6baf5f62e5631d41c1fd19f74d08ca73d5f8ba1aa208e070d8a5acb6f7e3"
+        "1edca4e17c0323922a0fc0ec417ad1ffe698ff1ce83e559fa9379d68a4ebb5b2"
     ),
     "src/mercury_release_control/public_tree.py": (
         "27b2e3bb0a74348cfc13b270920b68099c9264b751e53c56a54cebaa5431c29d"
@@ -91,7 +91,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "cb537c2f97f697874e92c4acefb17722684c131e3021b982accfbebc6f228d58"
     ),
     "src/mercury_release_control/surface_inspector.py": (
-        "60de03a9cbfcbb2307b7966661ba7103d2d75fd1e4fcda00611301637c30e824"
+        "8bf2f1ec70e5ea5cfe5bfb48d61ef09d8da0a4619f0e1712debb2144683dee4f"
     ),
     "src/mercury_release_control/workflow.py": (
         "d7d8a97b926a183fbd688d59785107a8b4763e60781c297d8cceb2949230e685"
@@ -115,7 +115,7 @@ V030_EXPECTED_POLICY: Mapping[str, object] = json.loads(
   "inspector": {
     "interface_version": 2,
     "path": "src/mercury_release_control/surface_inspector.py",
-    "sha256": "60de03a9cbfcbb2307b7966661ba7103d2d75fd1e4fcda00611301637c30e824"
+    "sha256": "8bf2f1ec70e5ea5cfe5bfb48d61ef09d8da0a4619f0e1712debb2144683dee4f"
   },
   "immutable_releases_required": true,
   "release_tag_ruleset": {

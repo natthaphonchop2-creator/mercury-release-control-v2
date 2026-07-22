@@ -174,7 +174,7 @@ def test_supabase_inspection_starts_read_only_and_requires_exact_inventory() -> 
             raise AssertionError(self.last)
 
     class Connection:
-        info = SimpleNamespace(ssl_in_use=True)
+        pgconn = SimpleNamespace(ssl_in_use=True)
 
         def cursor(self) -> Cursor:
             return Cursor()
@@ -212,7 +212,7 @@ def test_supabase_inspection_rejects_function_definition_hash_drift() -> None:
             raise AssertionError(self.last)
 
     class Connection:
-        info = SimpleNamespace(ssl_in_use=True)
+        pgconn = SimpleNamespace(ssl_in_use=True)
 
         def cursor(self) -> Cursor:
             return Cursor()
@@ -222,6 +222,22 @@ def test_supabase_inspection_rejects_function_definition_hash_drift() -> None:
             Connection(),
             expected_tables=tables,
             expected_functions=functions,
+            expected_migration_id="20260719120000",
+            version="0.3.0",
+        )
+
+
+def test_supabase_inspection_rejects_legacy_connection_info_tls_shape() -> None:
+    connection = SimpleNamespace(info=SimpleNamespace(ssl_in_use=True))
+
+    with pytest.raises(InspectionError, match="^database_tls_invalid$"):
+        inspect_supabase_connection(
+            connection,
+            expected_tables=[f"table_{index:02d}" for index in range(17)],
+            expected_functions={
+                name: "0" * 64
+                for name in release_profile("0.3.0").supabase_function_signatures
+            },
             expected_migration_id="20260719120000",
             version="0.3.0",
         )
