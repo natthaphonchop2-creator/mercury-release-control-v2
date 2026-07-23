@@ -30,7 +30,7 @@ V030_TRUSTED_FILE_SHA256 = {
         "5ea4aa1cad83979f0cedaabd3afd56a79b3653e1337d9f3769633267e6e87662"
     ),
     ".github/workflows/attest-v0.3.0.yml": (
-        "1f8a2fa466b58e42895a8096d09aa188a9ecf3533ac164413e72f46e166f58c4"
+        "30971f7e1e34c72d71dae0b2476111f033e997251ee1ca83789a358fadb6a819"
     ),
     ".github/workflows/ci.yml": "d147235488ee49c91d82d7ff96eafca704cb0b778548a0bd31265578efda93d9",
     ".github/workflows/guardian.yml": (

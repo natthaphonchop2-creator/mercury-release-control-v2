@@ -100,4 +100,21 @@ def test_attestation_dispatch_does_not_relay_caller_supplied_staging_identity() 
     assert "--arg public_tree_digest" not in dispatch
     assert "staging_ref:" not in dispatch
     assert "public_tree_digest:" not in dispatch
-    assert "release_control_attestation_b64" in dispatch
+    assert "release_control_attestation_gzip_b64" in dispatch
+
+
+def test_attestation_dispatch_uses_bounded_deterministic_gzip_transport() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    dispatch = text.split(
+        "- name: Dispatch secretless Mercury artifact verification", 1
+    )[1]
+
+    assert (
+        'ATTESTATION_GZIP_B64="$(gzip --no-name --best --stdout "$ATTESTATION" '
+        '| base64 --wrap=0)"'
+    ) in dispatch
+    assert 'test "${#ATTESTATION_GZIP_B64}" -le 60000' in dispatch
+    assert "--arg control_attestation_gzip_b64" in dispatch
+    assert "release_control_attestation_gzip_b64: $control_attestation_gzip_b64" in dispatch
+    assert "release_control_attestation_b64" not in dispatch
+    assert "ATTESTATION_B64" not in dispatch

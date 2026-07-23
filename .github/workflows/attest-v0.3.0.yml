@@ -190,9 +190,9 @@ jobs:
         run: |
           set -euo pipefail
           ATTESTATION="$RUNNER_TEMP/mercury-release/trusted-hosted-attestation.json"
-          ATTESTATION_B64="$(base64 --wrap=0 "$ATTESTATION")"
+          ATTESTATION_GZIP_B64="$(gzip --no-name --best --stdout "$ATTESTATION" | base64 --wrap=0)"
           PAYLOAD_SHA256="$(sha256sum "$ATTESTATION" | awk '{print $1}')"
-          test "${#ATTESTATION_B64}" -le 60000
+          test "${#ATTESTATION_GZIP_B64}" -le 60000
           jq -n \
             --arg ref main \
             --arg reviewed_main_sha "$REVIEWED_SHA" \
@@ -203,7 +203,7 @@ jobs:
             --arg control_artifact_digest "$ARTIFACT_DIGEST" \
             --arg control_payload_sha256 "$PAYLOAD_SHA256" \
             --arg control_repository_id "$GITHUB_REPOSITORY_ID" \
-            --arg control_attestation_b64 "$ATTESTATION_B64" \
+            --arg control_attestation_gzip_b64 "$ATTESTATION_GZIP_B64" \
             '{ref: $ref, inputs: {reviewed_main_sha: $reviewed_main_sha,
               release_control_commit: $control_commit,
               release_control_run_id: $control_run_id,
@@ -212,7 +212,7 @@ jobs:
               release_control_attestation_artifact_digest: $control_artifact_digest,
               release_control_attestation_payload_sha256: $control_payload_sha256,
               release_control_repository_id: $control_repository_id,
-              release_control_attestation_b64: $control_attestation_b64}}' \
+              release_control_attestation_gzip_b64: $control_attestation_gzip_b64}}' \
             | gh api --method POST \
               "repos/$TARGET_REPOSITORY/actions/workflows/release-v0.3.0.yml/dispatches" \
               --input - >/dev/null
