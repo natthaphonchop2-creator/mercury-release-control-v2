@@ -1,0 +1,115 @@
+name: Mercury v0.3.0 trusted production migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      reviewed_commit_sha:
+        description: Exact reviewed mercury-tools main commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mercury-v0.3.0-production-migration
+  cancel-in-progress: false
+
+jobs:
+  reject-non-main:
+    if: ${{ github.ref != 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Reject non-main dispatch
+        run: exit 1
+
+  migrate:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production-release
+    steps:
+      - name: Checkout exact trusted control
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install uv 0.11.9
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081
+        with:
+          version: 0.11.9
+      - name: Bind trusted control implementation
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+          uv sync --frozen
+      - name: Verify GitHub identities and protected release environment
+        env:
+          RELEASE_CONTROL_PREFLIGHT_TOKEN: ${{ secrets.RELEASE_CONTROL_PREFLIGHT_TOKEN }}
+        run: |
+          set -euo pipefail
+          umask 077
+          install -d -m 700 "$RUNNER_TEMP/mercury-migration"
+          uv run python -m mercury_release_control.workflow preflight \
+            --policy policy-v0.3.0.json \
+            --output "$RUNNER_TEMP/mercury-migration/preflight.json"
+      - name: Fetch exact reviewed migration as untrusted data
+        env:
+          GH_TOKEN: ${{ secrets.MERCURY_TARGET_REPOSITORY_READ_TOKEN }}
+          REVIEWED_SHA: ${{ inputs.reviewed_commit_sha }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          TARGET_REPOSITORY="$(jq -er '.reviewed_repository' policy-v0.3.0.json)"
+          TARGET_REPOSITORY_ID="$(jq -er '.reviewed_repository_id' policy-v0.3.0.json)"
+          test "$TARGET_REPOSITORY" = "natthaphonchop2-creator/mercury-tools"
+          test "$TARGET_REPOSITORY_ID" = "1290137723"
+          OBSERVED_REPOSITORY_ID="$(gh api "repos/$TARGET_REPOSITORY" --jq '.id')"
+          test "$OBSERVED_REPOSITORY_ID" = "$TARGET_REPOSITORY_ID"
+          MAIN_SHA="$(gh api "repos/$TARGET_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          test "$MAIN_SHA" = "$REVIEWED_SHA"
+          MIGRATION_PATH="supabase/migrations/20260719120000_connector_neutral_profiles.sql"
+          MIGRATION_ROOT="$RUNNER_TEMP/mercury-migration/input"
+          MIGRATION_FILE="$MIGRATION_ROOT/20260719120000_connector_neutral_profiles.sql"
+          install -d -m 700 "$MIGRATION_ROOT"
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$TARGET_REPOSITORY/contents/$MIGRATION_PATH?ref=$REVIEWED_SHA" \
+            >"$MIGRATION_FILE"
+          chmod 0400 "$MIGRATION_FILE"
+          printf '%s  %s\n' \
+            '7e6378206076be0d314c2ffb6636e5ea728150ad29491450e3e397c5b6271300' \
+            "$MIGRATION_FILE" | sha256sum --check
+      - name: Prepare pinned Supabase root CA
+        env:
+          SUPABASE_CA_SHA256: 700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7
+          SUPABASE_CA_URL: https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt
+        run: |
+          set -euo pipefail
+          CA_ROOT="$RUNNER_TEMP/mercury-migration/tls"
+          CA_PATH="$CA_ROOT/prod-ca-2021.crt"
+          install -d -m 700 "$CA_ROOT"
+          curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+            "$SUPABASE_CA_URL" --output "$CA_PATH"
+          printf '%s  %s\n' "$SUPABASE_CA_SHA256" "$CA_PATH" | sha256sum --check
+          chmod 0444 "$CA_PATH"
+      - name: Run trusted production migration
+        env:
+          REVIEWED_SHA: ${{ inputs.reviewed_commit_sha }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          umask 077
+          PGSSLROOTCERT="$RUNNER_TEMP/mercury-migration/tls/prod-ca-2021.crt"
+          export PGSSLROOTCERT
+          test -r "$PGSSLROOTCERT"
+          MIGRATION_FILE="$RUNNER_TEMP/mercury-migration/input/20260719120000_connector_neutral_profiles.sql"
+          test -r "$MIGRATION_FILE"
+          uv run python -m mercury_release_control.production_migration \
+            --migration "$MIGRATION_FILE" \
+            --reviewed-sha "$REVIEWED_SHA"
