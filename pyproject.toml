@@ -23,28 +23,10 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = [
-  "--ignore=tests/test_attest_workflow.py",
-  "--ignore=tests/test_guardian.py",
-  "--ignore=tests/test_migration_workflow.py",
-  "--ignore=tests/test_production_migration.py",
-  "--ignore=tests/test_publish_workflow_structure.py",
-  "--ignore=tests/test_surface_inspector.py",
-  "--ignore=tests/test_v030_controls.py",
-]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = [
-  "tests/test_attest_workflow.py",
-  "tests/test_guardian.py",
-  "tests/test_migration_workflow.py",
-  "tests/test_production_migration.py",
-  "tests/test_publish_workflow_structure.py",
-  "tests/test_surface_inspector.py",
-  "tests/test_v030_controls.py",
-]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
