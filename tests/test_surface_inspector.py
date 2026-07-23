@@ -42,6 +42,24 @@ class _HttpStream:
         return self._body[start : self._offset]
 
 
+def test_surface_evidence_hashes_share_bounded_envelope() -> None:
+    accepted = inspector._surface(
+        "github_actions_logs_artifacts_caches",
+        hashes=(f"{index:064x}" for index in range(1_600)),
+        started_at="2026-07-17T08:00:00+00:00",
+        completed_at="2026-07-17T08:00:00+00:00",
+    )
+
+    assert len(accepted["evidence_hashes"]) == 1_600
+    with pytest.raises(InspectionError, match="^surface_evidence_invalid$"):
+        inspector._surface(
+            "github_actions_logs_artifacts_caches",
+            hashes=(f"{index:064x}" for index in range(1_601)),
+            started_at="2026-07-17T08:00:00+00:00",
+            completed_at="2026-07-17T08:00:00+00:00",
+        )
+
+
 def test_hosted_payload_budget_reserves_capacity_beyond_general_inventory() -> None:
     budget = inspector.InspectionBudget(started=inspector.time.monotonic())
 
