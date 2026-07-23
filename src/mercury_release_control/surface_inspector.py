@@ -39,6 +39,7 @@ from typing import Any, BinaryIO
 
 from mercury_release_control.public_tree import PublicTreeError, build_public_tree
 from mercury_release_control.release_profile import (
+    MAX_SURFACE_EVIDENCE_HASHES,
     ReleaseProfile,
     ReleaseProfileError,
     release_profile,
@@ -3296,7 +3297,11 @@ def _surface(
     name: str, *, hashes: Iterable[str], started_at: str, completed_at: str
 ) -> dict[str, object]:
     evidence_hashes = list(hashes)
-    if not evidence_hashes or any(_SHA256_RE.fullmatch(item) is None for item in evidence_hashes):
+    if (
+        not evidence_hashes
+        or len(evidence_hashes) > MAX_SURFACE_EVIDENCE_HASHES
+        or any(_SHA256_RE.fullmatch(item) is None for item in evidence_hashes)
+    ):
         raise InspectionError("surface_evidence_invalid")
     return {
         "surface": name,

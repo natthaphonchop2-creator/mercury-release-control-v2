@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from mercury_release_control.preflight import PreflightReceipt
 from mercury_release_control.provider_inspector import ProviderEvidence
 from mercury_release_control.release_profile import (
+    MAX_SURFACE_EVIDENCE_HASHES,
     SUPPORTED_STAGING_REF_PATTERN,
     SUPPORTED_VERSION_PATTERN,
     ReleaseProfileError,
@@ -46,7 +47,9 @@ class WorkflowReceipt(_AttestationModel):
 class SurfaceReceipt(_AttestationModel):
     blocker_codes: tuple[str, ...]
     completed_at: datetime
-    evidence_hashes: tuple[str, ...] = Field(min_length=1, max_length=100)
+    evidence_hashes: tuple[str, ...] = Field(
+        min_length=1, max_length=MAX_SURFACE_EVIDENCE_HASHES
+    )
     exit_codes: tuple[int, ...] = Field(min_length=1, max_length=100)
     finding_codes: tuple[str, ...]
     finding_count: Literal[0]

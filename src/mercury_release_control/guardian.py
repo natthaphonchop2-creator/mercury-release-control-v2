@@ -45,14 +45,14 @@ V030_TRUSTED_FILE_SHA256 = {
     ".github/workflows/publish-v0.3.0.yml": (
         "a8efdc960dadcabae052dd4f0b80d5f5e1b3bf87175527c04a4201b4d2d8ff16"
     ),
-    "policy-v0.2.2.json": "cd31ea82e982b0d4c97a9b312c0a2fe76a561fcf4d44c22daf555d32b3e6e69b",
-    "policy-v0.3.0.json": ("3958352f667bda5543246d8cffc25c3739edcf6b525b5dc0fe76d298b6f453fa"),
+    "policy-v0.2.2.json": "284dd56512e9fc28b6fc9a3061446e9c50a263aa6692a360add9940201962bd8",
+    "policy-v0.3.0.json": ("207ba71258979e436b89c4ee85e62cd5dc2d080f1434a29d8081fdeefdd0716d"),
     "pyproject.toml": "f7ea42368cec3da102875f56dc7d70967a77b3794073e28416705d46fbc0663b",
     "src/mercury_release_control/__init__.py": (
         "735f223b0e1fe89a4515496dbec2e3dbc30218c044a9085624e5ada69af22ad9"
     ),
     "src/mercury_release_control/attestation.py": (
-        "c88af7b30d08aa7503548fd6f8da1cd1139501f2deb5a1215b32e6328fa0a544"
+        "7609f085f2830f5395a6ca195b4a22011a16224238c419f9480543495a456f5d"
     ),
     "src/mercury_release_control/github_preflight.py": (
         "28c7e8340eb691961c2393133cd0e7b6738d404f936ab42ffe5bb1f0535092b4"
@@ -85,13 +85,13 @@ V030_TRUSTED_FILE_SHA256 = {
         "d08e2df80c9301708f978a117a7581902239b6bb2e32bbf8013d759522577dba"
     ),
     "src/mercury_release_control/release_profile.py": (
-        "a1aa3403804961ca33e341db081ffddaf88d45d0b00da07fb32dca0f2959572c"
+        "311d51f84c5ba9ee2c1c0eea5f3dd5f0be44ed8b888c2cb2380faae492942449"
     ),
     "src/mercury_release_control/staging.py": (
         "cb537c2f97f697874e92c4acefb17722684c131e3021b982accfbebc6f228d58"
     ),
     "src/mercury_release_control/surface_inspector.py": (
-        "756e6ec1a5d82e9515c0eecc9d1b210ffd49abc867b42bad2dd77fbb8158f0ef"
+        "b2f6772e5c6039b3c3017907221025cfb86ec6e906e93df4020d0f4b489cc2db"
     ),
     "src/mercury_release_control/workflow.py": (
         "d7d8a97b926a183fbd688d59785107a8b4763e60781c297d8cceb2949230e685"
@@ -115,7 +115,7 @@ V030_EXPECTED_POLICY: Mapping[str, object] = json.loads(
   "inspector": {
     "interface_version": 2,
     "path": "src/mercury_release_control/surface_inspector.py",
-    "sha256": "756e6ec1a5d82e9515c0eecc9d1b210ffd49abc867b42bad2dd77fbb8158f0ef"
+    "sha256": "b2f6772e5c6039b3c3017907221025cfb86ec6e906e93df4020d0f4b489cc2db"
   },
   "immutable_releases_required": true,
   "release_tag_ruleset": {

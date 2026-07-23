@@ -8,6 +8,8 @@ from dataclasses import dataclass
 SUPPORTED_VERSION_PATTERN = r"^(?:0\.2\.2|0\.3\.0)$"
 SUPPORTED_STAGING_REF_PATTERN = r"^v0\.(?:2\.2|3\.0)-rc\.[0-9a-f]{12}$"
 SUPPORTED_RELEASE_WORKFLOW_PATTERN = r"^\.github/workflows/release-v0\.(?:2\.2|3\.0)\.yml$"
+# Covers 512 hosted objects with raw and dual-scanner hashes plus paginated inventories.
+MAX_SURFACE_EVIDENCE_HASHES = 1_600
 SUPPORTED_RELEASE_BUNDLE_PATTERN = (
     r"^mercury-v0\.(?:2\.2|3\.0)-release-artifacts-"
     r"[1-9][0-9]*-attempt-[1-9][0-9]*$"

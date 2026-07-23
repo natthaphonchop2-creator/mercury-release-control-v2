@@ -149,6 +149,58 @@ def test_attestation_is_exact_fresh_and_sanitized() -> None:
     validate_attestation(attestation, now=NOW + timedelta(minutes=5))
 
 
+def test_attestation_accepts_bounded_large_surface_evidence() -> None:
+    surface_evidence = _surface_evidence()
+    actions_surface = next(
+        item
+        for item in surface_evidence["surfaces"]
+        if item["surface"] == "github_actions_logs_artifacts_caches"
+    )
+    actions_surface["evidence_hashes"] = [f"{index:064x}" for index in range(1_600)]
+
+    attestation = assemble_attestation(
+        evidence=_provider_evidence(),
+        preflight=_preflight(),
+        staging=_staging(),
+        control_commit="e" * 40,
+        run_id=123,
+        run_attempt=1,
+        now=NOW,
+        surface_evidence=surface_evidence,
+        version="0.3.0",
+    )
+
+    receipt = next(
+        item
+        for item in attestation.surfaces
+        if item.surface == "github_actions_logs_artifacts_caches"
+    )
+    assert len(receipt.evidence_hashes) == 1_600
+
+
+def test_attestation_rejects_surface_evidence_above_shared_bound() -> None:
+    surface_evidence = _surface_evidence()
+    actions_surface = next(
+        item
+        for item in surface_evidence["surfaces"]
+        if item["surface"] == "github_actions_logs_artifacts_caches"
+    )
+    actions_surface["evidence_hashes"] = [f"{index:064x}" for index in range(1_601)]
+
+    with pytest.raises(AttestationError, match="^attestation_surface_evidence_invalid$"):
+        assemble_attestation(
+            evidence=_provider_evidence(),
+            preflight=_preflight(),
+            staging=_staging(),
+            control_commit="e" * 40,
+            run_id=123,
+            run_attempt=1,
+            now=NOW,
+            surface_evidence=surface_evidence,
+            version="0.3.0",
+        )
+
+
 def test_attestation_schema_rejects_unknown_fields() -> None:
     attestation = assemble_attestation(
         evidence=_provider_evidence(),
